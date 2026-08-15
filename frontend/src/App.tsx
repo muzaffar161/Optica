@@ -1,0 +1,152 @@
+import type { ReactNode } from 'react'
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { useAuth } from './AuthContext'
+import Layout from './components/Layout'
+import PlatformLayout from './components/PlatformLayout'
+import Login from './pages/Login'
+import Orders from './pages/Orders'
+import NewOrderPage from './components/NewOrderPage'
+import Products from './pages/Products'
+import Clients from './pages/Clients'
+import SettingsPage from './pages/Settings'
+import Notifications from './pages/Notifications'
+import PlatformHome from './pages/PlatformHome'
+import PlatformOrganizations from './pages/PlatformOrganizations'
+import PlatformPlans from './pages/PlatformPlans'
+import PlatformPackages from './pages/PlatformPackages'
+import PlatformPayments from './pages/PlatformPayments'
+import PlatformPaymentDetail from './pages/PlatformPaymentDetail'
+import PlatformPaymentSettings from './pages/PlatformPaymentSettings'
+import Staff from './pages/Staff'
+import BillingPage from './pages/Billing'
+import PaymentCheckoutPage from './pages/PaymentCheckout'
+import SmsPage from './pages/SmsPage'
+import ReportsPage from './pages/Reports'
+import AuditPage from './pages/Audit'
+import IntegrationsPage from './pages/Integrations'
+import { canEdit, canView, firstAllowedPath, pathModule } from './access'
+import { featuresOf, hasCatalog } from './types'
+
+function Loading() {
+  return (
+    <div className="flex min-h-svh items-center justify-center text-muted">Загрузка…</div>
+  )
+}
+
+function ShopGuard({ children }: { children: ReactNode }) {
+  const { user, loading } = useAuth()
+  if (loading) return <Loading />
+  if (!user) return <Navigate to="/login" replace />
+  if (user.role === 'platform') return <Navigate to="/platform" replace />
+  return children
+}
+
+function ModuleGuard({ children }: { children: ReactNode }) {
+  const { user } = useAuth()
+  const location = useLocation()
+  if (!user) return null
+  const module = pathModule(location.pathname)
+  if (module === 'staff' && user.isOwner === false) {
+    return <Navigate to={firstAllowedPath(user)} replace />
+  }
+  if ((location.pathname.startsWith('/billing') || location.pathname.startsWith('/sms')) && !user.orgOwner) {
+    return <Navigate to={firstAllowedPath(user)} replace />
+  }
+  if (location.pathname.startsWith('/reports') && user.isOwner === false && !user.orgOwner) {
+    return <Navigate to={firstAllowedPath(user)} replace />
+  }
+  if (location.pathname.startsWith('/audit') && (featuresOf(user).auditLevel === 'none' || (user.isOwner === false && !user.orgOwner))) {
+    return <Navigate to={firstAllowedPath(user)} replace />
+  }
+  if (location.pathname.startsWith('/integrations') && (!user.orgOwner || !featuresOf(user).apiAccess)) {
+    return <Navigate to={firstAllowedPath(user)} replace />
+  }
+  if (location.pathname === '/new-order' && !canEdit(user, 'orders')) {
+    return <Navigate to={firstAllowedPath(user)} replace />
+  }
+  if (location.pathname.startsWith('/products') && !hasCatalog(user)) {
+    return <Navigate to={firstAllowedPath(user)} replace />
+  }
+  if (module && module !== 'staff' && !canView(user, module)) {
+    return <Navigate to={firstAllowedPath(user)} replace />
+  }
+  return children
+}
+
+function PlatformGuard({ children }: { children: ReactNode }) {
+  const { user, loading } = useAuth()
+  if (loading) return <Loading />
+  if (!user) return <Navigate to="/platform/login" replace />
+  if (user.role !== 'platform') return <Navigate to="/" replace />
+  return children
+}
+
+function Guest({ children }: { children: ReactNode }) {
+  const { user, loading } = useAuth()
+  if (loading) return <Loading />
+  if (user?.role === 'platform') return <Navigate to="/platform" replace />
+  if (user) return <Navigate to="/" replace />
+  return children
+}
+
+export default function App() {
+  return (
+    <Routes>
+      <Route
+        path="/login"
+        element={
+          <Guest>
+            <Login audience="shop" />
+          </Guest>
+        }
+      />
+      <Route
+        path="/platform/login"
+        element={
+          <Guest>
+            <Login audience="platform" />
+          </Guest>
+        }
+      />
+      <Route
+        element={
+          <ShopGuard>
+            <ModuleGuard>
+              <Layout />
+            </ModuleGuard>
+          </ShopGuard>
+        }
+      >
+        <Route path="/" element={<Orders />} />
+        <Route path="/new-order" element={<NewOrderPage />} />
+        <Route path="/products" element={<Products />} />
+        <Route path="/clients" element={<Clients />} />
+        <Route path="/notifications" element={<Notifications />} />
+        <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/staff" element={<Staff />} />
+        <Route path="/reports" element={<ReportsPage />} />
+        <Route path="/audit" element={<AuditPage />} />
+        <Route path="/billing" element={<BillingPage />} />
+        <Route path="/billing/payments/:id" element={<PaymentCheckoutPage />} />
+        <Route path="/sms" element={<SmsPage />} />
+        <Route path="/integrations" element={<IntegrationsPage />} />
+      </Route>
+      <Route
+        element={
+          <PlatformGuard>
+            <PlatformLayout />
+          </PlatformGuard>
+        }
+      >
+        <Route path="/platform" element={<PlatformHome />} />
+        <Route path="/platform/organizations" element={<PlatformOrganizations />} />
+        <Route path="/platform/plans" element={<PlatformPlans />} />
+        <Route path="/platform/sms-packages" element={<PlatformPackages />} />
+        <Route path="/platform/payments" element={<PlatformPayments />} />
+        <Route path="/platform/payments/:id" element={<PlatformPaymentDetail />} />
+        <Route path="/platform/payment-settings" element={<PlatformPaymentSettings />} />
+      </Route>
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  )
+}

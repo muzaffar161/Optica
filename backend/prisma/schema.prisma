@@ -1,0 +1,407 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  platform
+  optics
+}
+
+enum AccessLevel {
+  none
+  view
+  edit
+  all
+}
+
+model User {
+  id            String      @id @default(cuid())
+  username      String      @unique
+  passwordHash  String
+  role          Role
+  opticsId      String?
+  optics        Optics?     @relation(fields: [opticsId], references: [id], onDelete: Cascade)
+  isOwner       Boolean     @default(false)
+  orgOwner      Boolean     @default(false)
+  active        Boolean     @default(true)
+  permOrders    AccessLevel @default(all)
+  permProducts  AccessLevel @default(all)
+  permClients   AccessLevel @default(all)
+  permJournal   AccessLevel @default(all)
+  permSettings  AccessLevel @default(all)
+  createdAt     DateTime    @default(now())
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+}
+
+model Organization {
+  id             String           @id @default(cuid())
+  name           String
+  active         Boolean          @default(true)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  optics         Optics[]
+  users          User[]
+  subscriptions  Subscription[]
+  wallet         SmsWallet?
+  smsTxs         SmsTransaction[]
+  auditEvents    AuditEvent[]
+  apiKeys        ApiKey[]
+  payments       Payment[]
+}
+
+model Optics {
+  id             String         @id @default(cuid())
+  organizationId String
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  active         Boolean        @default(true)
+  staffLimit     Int            @default(5)
+  catalogOrders  Boolean        @default(true)
+  rxOrders       Boolean        @default(false)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  users          User[]
+  clients        Client[]
+  orders         Order[]
+  settings       Settings?
+  notifications  Notification[]
+  products       Product[]
+  categories     Category[]
+}
+
+model Client {
+  id             String   @id @default(cuid())
+  opticsId       String
+  optics         Optics   @relation(fields: [opticsId], references: [id], onDelete: Cascade)
+  fullName       String
+  nameKey        String   @default("")
+  phone          String
+  telegramChatId String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  archived       Boolean   @default(false)
+  unarchivedAt   DateTime?
+  orders         Order[]
+
+  @@unique([opticsId, phone])
+  @@index([opticsId])
+}
+
+enum OrderStatus {
+  new
+  in_progress
+  ready
+  picked_up
+  cancelled
+}
+
+enum OrderKind {
+  catalog
+  rx
+}
+
+model Order {
+  id            String         @id @default(cuid())
+  opticsId      String
+  optics        Optics         @relation(fields: [opticsId], references: [id], onDelete: Cascade)
+  title         String
+  titleKey      String         @default("")
+  kind          OrderKind      @default(catalog)
+  amount        Int?
+  rxJson        String?
+  status        OrderStatus    @default(new)
+  clientId      String
+  client        Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  notifiedAt    DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  archived      Boolean        @default(false)
+  unarchivedAt  DateTime?
+  notifications Notification[]
+  items         OrderItem[]
+
+  @@index([opticsId])
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  name      String
+  qty       Int     @default(1)
+  photoPath String?
+}
+
+model Category {
+  id        String    @id @default(cuid())
+  opticsId  String
+  optics    Optics    @relation(fields: [opticsId], references: [id], onDelete: Cascade)
+  name      String
+  nameKey   String    @default("")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  products  Product[]
+
+  @@index([opticsId])
+}
+
+model Product {
+  id         String     @id @default(cuid())
+  opticsId   String
+  optics     Optics     @relation(fields: [opticsId], references: [id], onDelete: Cascade)
+  categoryId String?
+  category   Category?  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  name       String
+  nameKey    String     @default("")
+  photoPath  String?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  items      OrderItem[]
+
+  @@index([opticsId])
+  @@index([categoryId])
+}
+
+model Settings {
+  id               String   @id @default(cuid())
+  opticsId         String   @unique
+  optics           Optics   @relation(fields: [opticsId], references: [id], onDelete: Cascade)
+  opticsName       String
+  address          String
+  landmark         String
+  phone            String   @default("")
+  hours            String   @default("9:00–20:00")
+  theme            String   @default("atelier")
+  archiveAfterDays Int      @default(10)
+  template         String
+  templateKey      String   @default("compact")
+  templateCustom   Boolean  @default(false)
+  updatedAt        DateTime @updatedAt
+}
+
+model PlatformConfig {
+  id                   String   @id @default("default")
+  defaultTemplate      String
+  defaultTemplateKey   String   @default("compact")
+  clickInstructions    String   @default("")
+  clickQrPath          String   @default("")
+  clickAccount         String   @default("")
+  cardInstructions     String   @default("")
+  cardNumber           String   @default("")
+  cardOwner            String   @default("")
+  paymentExpireHours   Int      @default(24)
+  clickEnabled         Boolean  @default(true)
+  cardEnabled          Boolean  @default(true)
+  updatedAt            DateTime @updatedAt
+}
+
+enum NotificationChannel {
+  telegram
+  sms
+}
+
+enum NotificationDeliveryStatus {
+  sent
+  mocked
+  failed
+}
+
+model Notification {
+  id           String                      @id @default(cuid())
+  opticsId     String
+  optics       Optics                      @relation(fields: [opticsId], references: [id], onDelete: Cascade)
+  orderId      String
+  order        Order                       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  channel      NotificationChannel
+  status       NotificationDeliveryStatus
+  message      String
+  error        String?
+  createdAt    DateTime                    @default(now())
+  archived     Boolean                     @default(false)
+  unarchivedAt DateTime?
+  smsTxs       SmsTransaction[]
+
+  @@index([opticsId])
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+enum BillingPeriod {
+  month
+  year
+}
+
+enum SmsTxType {
+  SUBSCRIPTION_BONUS
+  PACKAGE_PURCHASE
+  MESSAGE_SENT
+  REFUND
+  ADJUSTMENT
+}
+
+enum PaymentType {
+  SUBSCRIPTION
+  SMS_PACKAGE
+}
+
+enum PaymentMethod {
+  CLICK
+  CARD_TRANSFER
+}
+
+enum PaymentStatus {
+  PENDING
+  WAITING_CONFIRMATION
+  PAID
+  REJECTED
+  EXPIRED
+}
+
+model Payment {
+  id              String         @id @default(cuid())
+  paymentNumber   String         @unique
+  organizationId  String
+  organization    Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  type            PaymentType
+  planId          String?
+  plan            Plan?          @relation(fields: [planId], references: [id], onDelete: SetNull)
+  smsPackageId    String?
+  smsPackage      SmsPackage?    @relation(fields: [smsPackageId], references: [id], onDelete: SetNull)
+  amount          Int
+  currency        String         @default("UZS")
+  paymentMethod   PaymentMethod?
+  status          PaymentStatus  @default(PENDING)
+  payerName       String?
+  cardLast4       String?
+  comment         String?
+  createdAt       DateTime       @default(now())
+  paidAt          DateTime?
+  rejectedAt      DateTime?
+  expiresAt       DateTime?
+  confirmedBy     String?
+  rejectionReason String?
+
+  @@index([organizationId, createdAt])
+  @@index([status])
+}
+
+model Plan {
+  id              String         @id @default(cuid())
+  name            String
+  slug            String         @unique
+  description     String         @default("")
+  price           Int
+  currency        String         @default("UZS")
+  billingPeriod   BillingPeriod  @default(month)
+  maxSalons       Int
+  maxEmployees    Int
+  includedSms     Int
+  statsLevel      String         @default("basic")
+  auditLevel      String         @default("none")
+  canExport       Boolean        @default(false)
+  advancedRoles   Boolean        @default(false)
+  apiAccess       Boolean        @default(false)
+  prioritySupport Boolean        @default(false)
+  recommended     Boolean        @default(false)
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  subscriptions   Subscription[]
+  payments        Payment[]
+}
+
+model Subscription {
+  id             String             @id @default(cuid())
+  organizationId String
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  planId         String
+  plan           Plan               @relation(fields: [planId], references: [id])
+  status         SubscriptionStatus @default(ACTIVE)
+  startedAt      DateTime           @default(now())
+  expiresAt      DateTime
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  @@index([organizationId, status])
+}
+
+model SmsWallet {
+  id             String       @id @default(cuid())
+  organizationId String       @unique
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  balance        Int          @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model SmsTransaction {
+  id             String        @id @default(cuid())
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  amount         Int
+  type           SmsTxType
+  description    String        @default("")
+  notificationId String?
+  notification   Notification? @relation(fields: [notificationId], references: [id], onDelete: SetNull)
+  balanceAfter   Int
+  createdAt      DateTime      @default(now())
+
+  @@index([organizationId])
+}
+
+model SmsPackage {
+  id        String   @id @default(cuid())
+  name      String
+  smsCount  Int
+  price     Int
+  currency  String   @default("UZS")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  payments  Payment[]
+}
+
+model AuditEvent {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  opticsId       String?
+  userId         String?
+  username       String       @default("")
+  action         String
+  entity         String       @default("")
+  entityId       String       @default("")
+  summary        String       @default("")
+  meta           String       @default("")
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([opticsId])
+}
+
+model ApiKey {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  keyHash        String       @unique
+  prefix         String
+  lastUsedAt     DateTime?
+  active         Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId])
+}
+

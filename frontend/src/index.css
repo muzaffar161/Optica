@@ -1,0 +1,127 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Fraunces", Georgia, serif;
+  --color-ink: #14261f;
+  --color-ink-soft: #1f3a2f;
+  --color-paper: #f3eee4;
+  --color-brass: #c49a5a;
+  --color-brass-dark: #8f6a36;
+  --color-card: #fffdf8;
+  --color-line: #e4d9c8;
+  --color-muted: #6b6258;
+  --color-nav: #14261f;
+  --color-nav-soft: #1f3a2f;
+}
+
+html[data-theme="clinic"] {
+  --color-ink: #1a365d;
+  --color-ink-soft: #2c5282;
+  --color-paper: #f4f7fa;
+  --color-brass: #319795;
+  --color-brass-dark: #234e52;
+  --color-card: #ffffff;
+  --color-line: #dce4ee;
+  --color-muted: #5f6b7a;
+  --color-nav: #163152;
+  --color-nav-soft: #23456e;
+}
+
+html[data-theme="boutique"] {
+  --color-ink: #1c1917;
+  --color-ink-soft: #292524;
+  --color-paper: #f7f1e8;
+  --color-brass: #c4a35a;
+  --color-brass-dark: #8f6f32;
+  --color-card: #fffaf2;
+  --color-line: #eadfce;
+  --color-muted: #6f675d;
+  --color-nav: #171412;
+  --color-nav-soft: #2a2420;
+}
+
+html[data-theme="sage"] {
+  --color-ink: #3f4a3c;
+  --color-ink-soft: #4f5d4b;
+  --color-paper: #f3f1ea;
+  --color-brass: #8a9a7b;
+  --color-brass-dark: #5d6b52;
+  --color-card: #fbfaf5;
+  --color-line: #ddd8cc;
+  --color-muted: #6b7066;
+  --color-nav: #2f382d;
+  --color-nav-soft: #414c3e;
+}
+
+html[data-theme="marble"] {
+  --color-ink: #2f343a;
+  --color-ink-soft: #3d444c;
+  --color-paper: #f3f2f0;
+  --color-brass: #8b8680;
+  --color-brass-dark: #5c5854;
+  --color-card: #fbfbfa;
+  --color-line: #e4e1dc;
+  --color-muted: #6d7278;
+  --color-nav: #22262b;
+  --color-nav-soft: #333940;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  overflow-x: clip;
+}
+
+body {
+  margin: 0;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+input,
+textarea,
+select {
+  outline: none;
+  min-width: 0;
+  max-width: 100%;
+}
+
+input:not([type='checkbox']):not([type='radio']):not([type='hidden']),
+textarea,
+select {
+  font-size: 16px !important;
+  min-width: 0;
+  max-width: 100%;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+@media print {
+  aside,
+  header {
+    display: none !important;
+  }
+
+  main {
+    padding: 0 !important;
+  }
+
+  body {
+    background: white !important;
+  }
+}

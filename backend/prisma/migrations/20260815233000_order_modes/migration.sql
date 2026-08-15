@@ -1,0 +1,8 @@
+-- AlterTable
+ALTER TABLE "Optics" ADD COLUMN "catalogOrders" BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE "Optics" ADD COLUMN "rxOrders" BOOLEAN NOT NULL DEFAULT false;
+
+-- AlterTable
+ALTER TABLE "Order" ADD COLUMN "kind" TEXT NOT NULL DEFAULT 'catalog';
+ALTER TABLE "Order" ADD COLUMN "amount" INTEGER;
+ALTER TABLE "Order" ADD COLUMN "rxJson" TEXT;

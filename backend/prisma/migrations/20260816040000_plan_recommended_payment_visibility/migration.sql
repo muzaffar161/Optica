@@ -1,0 +1,6 @@
+-- AlterTable
+ALTER TABLE "Plan" ADD COLUMN "recommended" BOOLEAN NOT NULL DEFAULT 0;
+
+-- AlterTable
+ALTER TABLE "PlatformConfig" ADD COLUMN "clickEnabled" BOOLEAN NOT NULL DEFAULT 1;
+ALTER TABLE "PlatformConfig" ADD COLUMN "cardEnabled" BOOLEAN NOT NULL DEFAULT 1;

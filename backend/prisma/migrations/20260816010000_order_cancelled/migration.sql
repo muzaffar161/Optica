@@ -1,0 +1,1 @@
+-- SQLite stores OrderStatus as TEXT; cancelled is a new allowed value.
