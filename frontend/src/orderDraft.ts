@@ -30,6 +30,7 @@ export type OrderDraft = {
   lens: string
   frame: string
   amount: string
+  paid: string
   blocks: RxBlock[]
 }
 
@@ -103,6 +104,7 @@ export function emptyDraft(phone = '+998', kind: OrderKind = 'catalog'): OrderDr
     lens: '',
     frame: '',
     amount: '',
+    paid: '',
     blocks: kind === 'rx' ? [emptyBlock(LABELS[0])] : [],
   }
 }
@@ -115,6 +117,7 @@ function normalize(draft: OrderDraft): OrderDraft {
     lens: draft.lens ?? '',
     frame: draft.frame ?? '',
     amount: draft.amount ?? '',
+    paid: draft.paid ?? '',
     blocks:
       draft.kind === 'rx' && draft.blocks?.length
         ? draft.blocks

@@ -5,7 +5,7 @@ import { SettingsService } from '../settings/settings.service';
 import { TelegramService } from '../telegram/telegram.service';
 import { SmsService } from './sms.service';
 import { SmsWalletService } from '../billing/sms-wallet.service';
-import { renderTemplate, firstNameOf, formatAmount } from '../common/template';
+import { renderTemplate, firstNameOf, moneyVars, withPaymentPlaceholders, publicPlace } from '../common/template';
 import { formatRxBody, formatRxTitle, parseRxJson } from '../common/rx';
 import { pageParams } from '../common/pagination';
 import {
@@ -110,6 +110,8 @@ export class NotificationsService {
         ? template.replace('Линза:', 'Рецепт:\n{rx}\nЛинза:')
         : `${template}\n\n{rx}`;
     }
+    template = withPaymentPlaceholders(template, order.paidAmount);
+    const pay = moneyVars(order.amount, order.paidAmount);
     const message = renderTemplate(template, {
       fullName: order.client.fullName,
       firstName: firstNameOf(order.client.fullName),
@@ -117,34 +119,63 @@ export class NotificationsService {
       rx: rxText,
       lens,
       frame,
-      amount: formatAmount(order.amount),
-      address: settings.address,
+      ...pay,
+      address: publicPlace(settings.address),
       opticsName: settings.opticsName,
-      landmark: settings.landmark,
+      landmark: publicPlace(settings.landmark),
       hours: settings.hours || '',
       phone: settings.phone || '',
     });
 
-    const chatId = order.client.telegramChatId;
+    const ok = await this.deliver({
+      opticsId: order.opticsId,
+      organizationId: order.optics.organizationId,
+      client: order.client,
+      orderId,
+      message,
+      kind: 'order',
+      smsDescription: `SMS клиенту ${order.client.fullName}`,
+    });
+    if (ok) {
+      await this.markNotified(orderId);
+    }
+  }
+
+  async deliver(opts: {
+    opticsId: string;
+    organizationId: string;
+    client: {
+      fullName: string;
+      phone: string;
+      telegramChatId: string | null;
+    };
+    orderId: string;
+    message: string;
+    kind?: string;
+    smsDescription?: string;
+  }) {
+    const kind = opts.kind || 'order';
+    const chatId = opts.client.telegramChatId;
     if (chatId) {
-      const tg = await this.telegram.sendMessage(chatId, message);
+      const tg = await this.telegram.sendMessage(chatId, opts.message);
       if (tg.ok) {
         await this.log({
-          opticsId: order.opticsId,
-          orderId,
+          opticsId: opts.opticsId,
+          orderId: opts.orderId,
+          kind,
           channel: 'telegram',
           status: 'sent',
-          message,
+          message: opts.message,
         });
-        await this.markNotified(orderId);
-        return;
+        return true;
       }
       await this.log({
-        opticsId: order.opticsId,
-        orderId,
+        opticsId: opts.opticsId,
+        orderId: opts.orderId,
+        kind,
         channel: 'telegram',
         status: 'failed',
-        message,
+        message: opts.message,
         error: tg.error,
       });
       this.logger.warn(
@@ -152,57 +183,59 @@ export class NotificationsService {
       );
     }
 
-    const orgId = order.optics.organizationId;
     let debitId: string | null = null;
     try {
       const debit = await this.wallet.debit({
-        organizationId: orgId,
+        organizationId: opts.organizationId,
         amount: 1,
         type: 'MESSAGE_SENT',
-        description: `SMS клиенту ${order.client.fullName}`,
+        description: opts.smsDescription || `SMS клиенту ${opts.client.fullName}`,
       });
       debitId = debit.transaction.id;
     } catch (err) {
       const reason =
         err instanceof Error ? err.message : 'Недостаточно SMS на балансе';
       await this.log({
-        opticsId: order.opticsId,
-        orderId,
+        opticsId: opts.opticsId,
+        orderId: opts.orderId,
+        kind,
         channel: 'sms',
         status: 'failed',
-        message,
+        message: opts.message,
         error: reason,
       });
       this.logger.warn(`SMS не отправлено: ${reason}`);
-      return;
+      return false;
     }
 
     try {
-      await this.sms.send(order.client.phone, message);
+      await this.sms.send(opts.client.phone, opts.message);
     } catch (err) {
       await this.wallet.credit({
-        organizationId: orgId,
+        organizationId: opts.organizationId,
         amount: 1,
         type: 'REFUND',
         description: 'Возврат: SMS не отправилось',
       });
       await this.log({
-        opticsId: order.opticsId,
-        orderId,
+        opticsId: opts.opticsId,
+        orderId: opts.orderId,
+        kind,
         channel: 'sms',
         status: 'failed',
-        message,
+        message: opts.message,
         error: err instanceof Error ? err.message : 'Ошибка SMS',
       });
-      return;
+      return false;
     }
 
     const logged = await this.log({
-      opticsId: order.opticsId,
-      orderId,
+      opticsId: opts.opticsId,
+      orderId: opts.orderId,
+      kind,
       channel: 'sms',
       status: 'mocked',
-      message,
+      message: opts.message,
     });
     if (debitId) {
       await this.prisma.smsTransaction.update({
@@ -210,7 +243,7 @@ export class NotificationsService {
         data: { notificationId: logged.id },
       });
     }
-    await this.markNotified(orderId);
+    return true;
   }
 
   private markNotified(orderId: string) {
@@ -223,6 +256,7 @@ export class NotificationsService {
   private log(data: {
     opticsId: string;
     orderId: string;
+    kind?: string;
     channel: 'telegram' | 'sms';
     status: 'sent' | 'mocked' | 'failed';
     message: string;

@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { PaymentMethod } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { deleteUpload, savePlatformImage, type UploadedImage } from '../uploads/upload';
+import { personName } from '../common/person-name';
 
 export type PaymentSettings = {
   clickInstructions: string;
@@ -87,7 +88,8 @@ export class PaymentSettingsService {
         clickQrPath,
         cardInstructions: dto.cardInstructions ?? current.cardInstructions,
         cardNumber: dto.cardNumber ?? current.cardNumber,
-        cardOwner: dto.cardOwner ?? current.cardOwner,
+        cardOwner:
+          dto.cardOwner != null ? personName(dto.cardOwner) : current.cardOwner,
         paymentExpireHours:
           typeof hours === 'number'
             ? Math.min(168, Math.max(1, hours))

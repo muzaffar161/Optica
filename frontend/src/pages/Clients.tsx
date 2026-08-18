@@ -9,6 +9,7 @@ import PhoneInput from '../components/PhoneInput'
 import ArchiveTabs, { ArchiveAction } from '../components/ArchiveTabs'
 import { isPhoneValid, UZ_DEFAULT } from '../phone'
 import { formatDate, featuresOf, type Client, type Page } from '../types'
+import { formatPersonName, personName } from '../name'
 import { useAuth } from '../AuthContext'
 import { canAll, canEdit } from '../access'
 
@@ -62,7 +63,7 @@ export default function Clients() {
 
   function openEdit(client: Client) {
     setEditing(client)
-    setFullName(client.fullName)
+    setFullName(formatPersonName(client.fullName))
     setPhone(client.phone)
     setOpen(true)
   }
@@ -78,13 +79,13 @@ export default function Clients() {
       if (editing) {
         await api<Client>(`/clients/${editing.id}`, {
           method: 'PATCH',
-          body: JSON.stringify({ fullName, phone }),
+          body: JSON.stringify({ fullName: personName(fullName), phone }),
         })
         toast('Клиент обновлён')
       } else {
         await api<Client>('/clients', {
           method: 'POST',
-          body: JSON.stringify({ fullName, phone }),
+          body: JSON.stringify({ fullName: personName(fullName), phone }),
         })
         toast('Клиент добавлен')
       }
@@ -328,8 +329,11 @@ export default function Clients() {
               <input
                 required
                 minLength={2}
+                autoCapitalize="characters"
+                autoCorrect="off"
+                spellCheck={false}
                 value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
+                onChange={(e) => setFullName(formatPersonName(e.target.value))}
                 className="w-full rounded-xl border border-line px-3 py-2.5 outline-none"
               />
             </label>

@@ -27,6 +27,8 @@ type Report = {
     byWeekday: number[]
     notifications: Record<string, number>
     topItems: { name: string; qty: number }[]
+    topLenses?: { name: string; qty: number }[]
+    topFrames?: { name: string; qty: number }[]
     days: { day: string; orders: number; revenue: number }[]
     previous: {
       from: string
@@ -390,50 +392,39 @@ export default function ReportsPage() {
           </section>
 
           <div className="grid gap-3 md:grid-cols-2">
-            <section className="rounded-2xl border border-line bg-card p-4">
-              <div className="mb-3 text-sm text-muted">Каталог и рецепт</div>
-              <ShareBars
-                items={[
-                  { label: 'Каталог', value: data.extended.byKind.catalog || 0 },
-                  { label: 'Рецепт', value: data.extended.byKind.rx || 0 },
-                ]}
-              />
-            </section>
+            {(data.extended.byKind.catalog || 0) > 0 &&
+              (data.extended.byKind.rx || 0) > 0 && (
+              <section className="rounded-2xl border border-line bg-card p-4">
+                <div className="mb-3 text-sm text-muted">Каталог и рецепт</div>
+                <ShareBars
+                  items={[
+                    { label: 'Каталог', value: data.extended.byKind.catalog || 0 },
+                    { label: 'Рецепт', value: data.extended.byKind.rx || 0 },
+                  ]}
+                />
+              </section>
+            )}
             <section className="rounded-2xl border border-line bg-card p-4">
               <div className="mb-3 text-sm text-muted">Дни недели</div>
               <WeekdayBars values={data.extended.byWeekday} />
             </section>
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-2">
-            <section className="rounded-2xl border border-line bg-card p-4">
-              <div className="mb-3 text-sm text-muted">Топ позиций</div>
-              {data.extended.topItems.length === 0 ? (
-                <p className="text-sm text-muted">Пока нет позиций в заказах</p>
-              ) : (
-                <ol className="space-y-2">
-                  {data.extended.topItems.map((item, i) => {
-                    const max = data.extended!.topItems[0].qty || 1
-                    return (
-                      <li key={item.name} className="text-sm">
-                        <div className="flex justify-between gap-3">
-                          <span>
-                            {i + 1}. {item.name}
-                          </span>
-                          <span className="text-muted">{item.qty}</span>
-                        </div>
-                        <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-line">
-                          <div
-                            className="h-full rounded-full bg-ink"
-                            style={{ width: `${Math.max(8, (item.qty / max) * 100)}%` }}
-                          />
-                        </div>
-                      </li>
-                    )
-                  })}
-                </ol>
+            {data.extended.topItems.length > 0 && (
+              <TopList title="Топ позиций" items={data.extended.topItems} />
+            )}
+            {(data.extended.topLenses ?? []).length > 0 && (
+              <TopList title="Топ линз" items={data.extended.topLenses ?? []} />
+            )}
+            {(data.extended.topFrames ?? []).length > 0 && (
+              <TopList title="Топ оправ" items={data.extended.topFrames ?? []} />
+            )}
+            {data.extended.topItems.length === 0 &&
+              (data.extended.topLenses ?? []).length === 0 &&
+              (data.extended.topFrames ?? []).length === 0 && (
+                <section className="rounded-2xl border border-line bg-card p-4">
+                  <div className="mb-3 text-sm text-muted">Топ позиций</div>
+                  <p className="text-sm text-muted">Пока нет позиций в заказах</p>
+                </section>
               )}
-            </section>
             <section className="rounded-2xl border border-line bg-card p-4">
               <div className="mb-3 text-sm text-muted">Уведомления</div>
               <ShareBars
@@ -463,6 +454,39 @@ export default function ReportsPage() {
         <p className="text-sm text-muted">Сводку по сети видит владелец организации.</p>
       )}
     </div>
+  )
+}
+
+function TopList({
+  title,
+  items,
+}: {
+  title: string
+  items: { name: string; qty: number }[]
+}) {
+  const max = items[0]?.qty || 1
+  return (
+    <section className="rounded-2xl border border-line bg-card p-4">
+      <div className="mb-3 text-sm text-muted">{title}</div>
+      <ol className="space-y-2">
+        {items.map((item, i) => (
+          <li key={item.name} className="text-sm">
+            <div className="flex justify-between gap-3">
+              <span>
+                {i + 1}. {item.name}
+              </span>
+              <span className="text-muted">{item.qty}</span>
+            </div>
+            <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-line">
+              <div
+                className="h-full rounded-full bg-ink"
+                style={{ width: `${Math.max(8, (item.qty / max) * 100)}%` }}
+              />
+            </div>
+          </li>
+        ))}
+      </ol>
+    </section>
   )
 }
 

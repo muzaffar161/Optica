@@ -93,6 +93,12 @@ export class CreateOrderDto {
   amount?: number;
 
   @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  paidAmount?: number;
+
+  @IsOptional()
   @ValidateNested()
   @Type(() => RxPayloadDto)
   rx?: RxPayloadDto;

@@ -83,6 +83,8 @@ model Client {
   nameKey        String   @default("")
   phone          String
   telegramChatId String?
+  lastVisitAt    DateTime?
+  lastCheckupRemindedAt DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   archived       Boolean   @default(false)
@@ -91,6 +93,7 @@ model Client {
 
   @@unique([opticsId, phone])
   @@index([opticsId])
+  @@index([opticsId, lastVisitAt])
 }
 
 enum OrderStatus {
@@ -114,6 +117,7 @@ model Order {
   titleKey      String         @default("")
   kind          OrderKind      @default(catalog)
   amount        Int?
+  paidAmount     Int      @default(0)
   rxJson        String?
   status        OrderStatus    @default(new)
   clientId      String
@@ -184,6 +188,10 @@ model Settings {
   template         String
   templateKey      String   @default("compact")
   templateCustom   Boolean  @default(false)
+  checkupRemindEnabled  Boolean @default(true)
+  checkupIntervalMonths Int     @default(6)
+  checkupNotifyDay      Int     @default(1)
+  lastCheckupRunOn      String  @default("")
   updatedAt        DateTime @updatedAt
 }
 
@@ -220,6 +228,7 @@ model Notification {
   optics       Optics                      @relation(fields: [opticsId], references: [id], onDelete: Cascade)
   orderId      String
   order        Order                       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  kind         String                      @default("order")
   channel      NotificationChannel
   status       NotificationDeliveryStatus
   message      String

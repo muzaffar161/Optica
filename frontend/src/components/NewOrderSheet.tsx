@@ -2,10 +2,10 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../api'
 import { useToast } from '../Toast'
-import PhoneInput from './PhoneInput'
-import Select from './Select'
+import ClientPicker from './ClientPicker'
 import { isPhoneValid, UZ_DEFAULT } from '../phone'
 import { draftLabel, ensureCurrent, holdCurrent, setCurrent } from '../orderDraft'
+import { personName } from '../name'
 import type { Category, Client, Page, Product } from '../types'
 
 type Cart = Record<string, number>
@@ -24,7 +24,6 @@ export default function NewOrderSheet() {
   const [step, setStep] = useState<'goods' | 'client'>(initial.step)
   const [creatingClient, setCreatingClient] = useState(initial.creatingClient)
   const [clients, setClients] = useState<Client[]>([])
-  const [clientQ, setClientQ] = useState('')
   const [clientId, setClientId] = useState(initial.clientId)
   const [fullName, setFullName] = useState(initial.fullName)
   const [phone, setPhone] = useState(initial.phone || UZ_DEFAULT)
@@ -117,8 +116,17 @@ export default function NewOrderSheet() {
       toast('Ткните товары или напишите, что заказать', 'err')
       return
     }
-    if (creatingClient && !isPhoneValid(phone)) {
-      toast('Проверьте номер телефона', 'err')
+    if (creatingClient) {
+      if (personName(fullName).length < 2) {
+        toast('Укажите ФИО', 'err')
+        return
+      }
+      if (!isPhoneValid(phone)) {
+        toast('Проверьте номер телефона', 'err')
+        return
+      }
+    } else if (!clientId) {
+      toast('Выберите клиента или добавьте нового', 'err')
       return
     }
     setPending(true)
@@ -128,7 +136,7 @@ export default function NewOrderSheet() {
         qty,
       }))
       const body = creatingClient
-        ? { kind: 'catalog', items, note: note.trim() || undefined, client: { fullName, phone } }
+        ? { kind: 'catalog', items, note: note.trim() || undefined, client: { fullName: personName(fullName), phone } }
         : { kind: 'catalog', items, note: note.trim() || undefined, clientId }
       await api('/orders', {
         method: 'POST',
@@ -354,62 +362,37 @@ export default function NewOrderSheet() {
           className="w-full rounded-xl border border-line px-3 py-2.5 outline-none"
         />
       </label>
-      <div className="flex gap-2 text-sm">
-        <button
-          type="button"
-          onClick={() => setCreatingClient(false)}
-          className={`rounded-full px-3 py-1 ${
-            !creatingClient ? 'bg-ink text-white' : 'border border-line'
-          }`}
-        >
-          Клиент есть
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setCreatingClient(true)
-            if (!phone.trim()) setPhone(UZ_DEFAULT)
-          }}
-          className={`rounded-full px-3 py-1 ${
-            creatingClient ? 'bg-ink text-white' : 'border border-line'
-          }`}
-        >
-          Новый клиент
-        </button>
-      </div>
-      {creatingClient ? (
-        <>
-          <label className="block">
-            <span className="mb-1 block text-sm text-muted">ФИО</span>
-            <input
-              required
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              className="w-full rounded-xl border border-line px-3 py-2.5 outline-none"
-            />
-          </label>
-          <PhoneInput required value={phone} onChange={setPhone} />
-        </>
-      ) : (
-        <Select
-          label="Клиент"
-          required
-          searchable
-          searchPlaceholder="Имя или телефон"
-          value={clientId}
-          onChange={setClientId}
-          placeholder="Выберите клиента"
-          options={clients.map((c) => ({
-            value: c.id,
-            label: c.fullName,
-            hint: c.phone,
-          }))}
-          onSearch={(query) => {
-            setClientQ(query)
-            loadClients(query).catch(() => {})
-          }}
-        />
-      )}
+      <ClientPicker
+        clients={clients}
+        clientId={clientId}
+        fullName={fullName}
+        phone={phone}
+        creating={creatingClient}
+        onSearch={(query) => {
+          loadClients(query).catch(() => {})
+        }}
+        onSelect={(client) => {
+          setCreatingClient(false)
+          setClientId(client.id)
+          setFullName(personName(client.fullName))
+          setPhone(client.phone)
+        }}
+        onStartCreate={(draft) => {
+          setCreatingClient(true)
+          setClientId('')
+          setFullName(draft.fullName)
+          setPhone(draft.phone)
+        }}
+        onChangeName={setFullName}
+        onChangePhone={setPhone}
+        onClear={() => {
+          setCreatingClient(false)
+          setClientId('')
+          setFullName('')
+          setPhone(UZ_DEFAULT)
+          loadClients().catch(() => {})
+        }}
+      />
     </div>
   )
 

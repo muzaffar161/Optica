@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Patch } from '@nestjs/common';
+import { Body, Controller, Get, Patch, Post } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { SettingsService } from './settings.service';
 import { UpdateSettingsDto } from './dto/update-settings.dto';
@@ -37,6 +37,23 @@ export class SettingsController {
       entityId: opticsIdOf(user),
       summary: 'Настройки салона',
     });
+    if (
+      dto.checkupRemindEnabled != null ||
+      dto.checkupIntervalMonths != null ||
+      dto.checkupNotifyDay != null
+    ) {
+      this.events.emit('checkup.reschedule');
+    }
     return row;
+  }
+
+  @Post('checkup-remind')
+  @Access('settings', 'edit')
+  async remindNow(@CurrentUser() user: AuthUser) {
+    const results = await this.events.emitAsync('checkup.remind', {
+      opticsId: opticsIdOf(user),
+      force: true,
+    });
+    return results[0] ?? { sent: 0, failed: 0, skipped: 0 };
   }
 }

@@ -21,6 +21,7 @@ import {
 } from './providers/payment-provider.interface';
 import { pageParams } from '../common/pagination';
 import { PaymentSettingsService } from './payment-settings.service';
+import { personName } from '../common/person-name';
 
 const OPEN: PaymentStatus[] = ['PENDING', 'WAITING_CONFIRMATION'];
 
@@ -206,7 +207,7 @@ export class PaymentService {
     }
     const settings = await this.paymentSettings.get();
     this.paymentSettings.assertMethodEnabled(settings, dto.paymentMethod);
-    const payerName = dto.payerName?.trim() || null;
+    const payerName = dto.payerName ? personName(dto.payerName) || null : null;
     const cardLast4 = normalizeLast4(dto.cardLast4);
     if (dto.paymentMethod === 'CARD_TRANSFER') {
       if (!payerName) throw new BadRequestException('Укажите имя плательщика');

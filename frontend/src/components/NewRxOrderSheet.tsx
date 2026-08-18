@@ -2,9 +2,11 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api'
 import { useToast } from '../Toast'
-import PhoneInput from './PhoneInput'
 import Select from './Select'
+import ClientPicker from './ClientPicker'
 import { isPhoneValid, UZ_DEFAULT } from '../phone'
+import { personName } from '../name'
+import { mergeRecent, readRecent, rememberRecent } from '../recentRx'
 import {
   emptyBlock,
   ensureCurrent,
@@ -17,7 +19,7 @@ import {
   type RxBlock,
   type RxEye,
 } from '../orderDraft'
-import type { Client, Page } from '../types'
+import { formatSum, type Client, type Page } from '../types'
 
 const LABELS = ['Очки для дали', 'Очки для чтения', 'Компьютерные', 'Другое']
 
@@ -81,7 +83,7 @@ function parseSigned(value: string, fallback: '+' | '-' = '+'): { sign: '+' | '-
 
 function joinSigned(sign: '+' | '-', body: string) {
   const raw = body.replace(/^[+-]+/, '')
-  if (!raw) return ''
+  if (!raw) return sign
   return sign + raw
 }
 
@@ -93,6 +95,35 @@ function withSign(value: string, fallback: '+' | '-') {
 
 function hasRxNumber(value: string) {
   return value.replace(/^[+-]+/, '').trim() !== ''
+}
+
+function RecentChips({
+  items,
+  current,
+  onPick,
+}: {
+  items: string[]
+  current: string
+  onPick: (value: string) => void
+}) {
+  const visible = items.filter(
+    (item) => item.trim().toLocaleLowerCase('ru-RU') !== current.trim().toLocaleLowerCase('ru-RU'),
+  )
+  if (!visible.length) return null
+  return (
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      {visible.map((item) => (
+        <button
+          key={item}
+          type="button"
+          onClick={() => onPick(item)}
+          className="max-w-full truncate rounded-full border border-line px-3 py-1 text-xs hover:border-brass hover:bg-paper"
+        >
+          {item}
+        </button>
+      ))}
+    </div>
+  )
 }
 
 function EyeRow({
@@ -111,7 +142,7 @@ function EyeRow({
         label="Sph"
         rx="sph"
         signed
-        defaultSign="+"
+        defaultSign="-"
         value={value.sph}
         onChange={(sph) => onChange({ ...value, sph })}
       />
@@ -139,7 +170,7 @@ function Field({
   onChange,
   rx,
   signed,
-  defaultSign = '+',
+  defaultSign = '-',
 }: {
   label: string
   value: string
@@ -162,9 +193,9 @@ function Field({
             type="button"
             onClick={() => onChange(joinSigned(nextSign, body))}
             className="w-7 shrink-0 text-base font-medium text-ink"
-            aria-label={nextSign === '+' ? 'Поставить плюс' : 'Поставить минус'}
+            aria-label={sign === '+' ? 'Сейчас плюс, поставить минус' : 'Сейчас минус, поставить плюс'}
           >
-            {nextSign === '-' ? '−' : '+'}
+            {sign === '-' ? '−' : '+'}
           </button>
         )}
         <input
@@ -176,6 +207,10 @@ function Field({
           autoCorrect="off"
           onChange={(e) => {
             const raw = e.target.value
+            if (signed && !/\d/.test(body) && /^[.,]$/.test(raw.trim())) {
+              onChange(joinSigned(nextSign, ''))
+              return
+            }
             const limited =
               rx === 'ax' ? limitAx(raw) : signed ? limitDiopter(raw) : raw
             const next = signed ? joinSigned(sign, limited) : limited
@@ -202,7 +237,11 @@ export default function NewRxOrderSheet() {
   )
   const [lens, setLens] = useState(initial.lens)
   const [frame, setFrame] = useState(initial.frame)
+  const [lensRecent, setLensRecent] = useState(() => readRecent('lens'))
+  const [frameRecent, setFrameRecent] = useState(() => readRecent('frame'))
   const [amount, setAmount] = useState(initial.amount)
+  const [paid, setPaid] = useState(initial.paid)
+  const [showDeposit, setShowDeposit] = useState(!!initial.paid.trim())
   const [creatingClient, setCreatingClient] = useState(initial.creatingClient)
   const [clients, setClients] = useState<Client[]>([])
   const [clientId, setClientId] = useState(initial.clientId)
@@ -225,6 +264,12 @@ export default function NewRxOrderSheet() {
 
   useEffect(() => {
     loadClients().catch((err: Error) => toast(err.message, 'err'))
+    api<{ lenses: string[]; frames: string[] }>('/orders/rx-suggestions')
+      .then((data) => {
+        setLensRecent(mergeRecent(readRecent('lens'), data.lenses))
+        setFrameRecent(mergeRecent(readRecent('frame'), data.frames))
+      })
+      .catch(() => {})
   }, [])
 
   function persistDraft() {
@@ -244,6 +289,7 @@ export default function NewRxOrderSheet() {
       lens,
       frame,
       amount,
+      paid,
       blocks,
     }
     setCurrent(draft)
@@ -253,7 +299,7 @@ export default function NewRxOrderSheet() {
   useEffect(() => {
     if (skipPersist.current) return
     persistDraft()
-  }, [draftId, blocks, lens, frame, amount, creatingClient, clientId, fullName, phone, step])
+  }, [draftId, blocks, lens, frame, amount, paid, creatingClient, clientId, fullName, phone, step])
 
   function patchBlock(id: string, next: Partial<RxBlock>) {
     setBlocks((prev) => prev.map((block) => (block.id === id ? { ...block, ...next } : block)))
@@ -266,6 +312,11 @@ export default function NewRxOrderSheet() {
       return
     }
     const parsed = parseAmount(amount)
+    const paidParsed = parseAmount(paid) ?? 0
+    if (parsed != null && paidParsed > parsed) {
+      toast('Залог не может быть больше итога', 'err')
+      return
+    }
     const filled = blocks.some(
       (block) =>
         block.dpp.trim() ||
@@ -280,8 +331,17 @@ export default function NewRxOrderSheet() {
       toast('Заполните рецепт, линзу или оправу', 'err')
       return
     }
-    if (creatingClient && !isPhoneValid(phone)) {
-      toast('Проверьте номер телефона', 'err')
+    if (creatingClient) {
+      if (personName(fullName).length < 2) {
+        toast('Укажите ФИО', 'err')
+        return
+      }
+      if (!isPhoneValid(phone)) {
+        toast('Проверьте номер телефона', 'err')
+        return
+      }
+    } else if (!clientId) {
+      toast('Выберите клиента или добавьте нового', 'err')
       return
     }
     setPending(true)
@@ -289,16 +349,17 @@ export default function NewRxOrderSheet() {
       const body = {
         kind: 'rx',
         amount: parsed,
+        paidAmount: paidParsed || undefined,
         rx: {
           blocks: blocks.map((block) => ({
             label: block.label,
             od: {
-              sph: withSign(block.od.sph, '+'),
+              sph: withSign(block.od.sph, '-'),
               cyl: withSign(block.od.cyl, '-'),
               ax: block.od.ax,
             },
             os: {
-              sph: withSign(block.os.sph, '+'),
+              sph: withSign(block.os.sph, '-'),
               cyl: withSign(block.os.cyl, '-'),
               ax: block.os.ax,
             },
@@ -308,13 +369,15 @@ export default function NewRxOrderSheet() {
           frame: frame.trim() || undefined,
         },
         ...(creatingClient
-          ? { client: { fullName, phone } }
+          ? { client: { fullName: personName(fullName), phone } }
           : { clientId }),
       }
       await api('/orders', {
         method: 'POST',
         body: JSON.stringify(body),
       })
+      if (lens.trim()) rememberRecent('lens', lens.trim())
+      if (frame.trim()) rememberRecent('frame', frame.trim())
       toast('Заказ создан')
       skipPersist.current = true
       setCurrent(null)
@@ -476,98 +539,123 @@ export default function NewRxOrderSheet() {
             ))}
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <label className="block">
-                <span className="mb-1 block text-sm text-muted">Линза</span>
-                <input
-                  value={lens}
-                  onChange={(e) => setLens(e.target.value)}
-                  enterKeyHint="next"
-                  className="w-full rounded-xl border border-line px-3 py-2.5 outline-none"
-                />
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-sm text-muted">Оправа</span>
-                <input
-                  value={frame}
-                  onChange={(e) => setFrame(e.target.value)}
-                  enterKeyHint="next"
-                  className="w-full rounded-xl border border-line px-3 py-2.5 outline-none"
-                />
-              </label>
+              <div>
+                <label className="block">
+                  <span className="mb-1 block text-sm text-muted">Линза</span>
+                  <input
+                    value={lens}
+                    onChange={(e) => setLens(e.target.value)}
+                    enterKeyHint="next"
+                    className="w-full rounded-xl border border-line px-3 py-2.5 outline-none"
+                  />
+                </label>
+                <RecentChips items={lensRecent} current={lens} onPick={setLens} />
+              </div>
+              <div>
+                <label className="block">
+                  <span className="mb-1 block text-sm text-muted">Оправа</span>
+                  <input
+                    value={frame}
+                    onChange={(e) => setFrame(e.target.value)}
+                    enterKeyHint="next"
+                    className="w-full rounded-xl border border-line px-3 py-2.5 outline-none"
+                  />
+                </label>
+                <RecentChips items={frameRecent} current={frame} onPick={setFrame} />
+              </div>
             </div>
               </>
             )}
 
             {step === 'client' && (
               <>
-            <div className="flex gap-2 text-sm">
-              <button
-                type="button"
-                onClick={() => setCreatingClient(false)}
-                className={`rounded-full px-3 py-1 ${
-                  !creatingClient ? 'bg-ink text-white' : 'border border-line'
-                }`}
-              >
-                Клиент есть
-              </button>
+            <ClientPicker
+              clients={clients}
+              clientId={clientId}
+              fullName={fullName}
+              phone={phone}
+              creating={creatingClient}
+              autoFocus
+              onSearch={(query) => {
+                loadClients(query).catch(() => {})
+              }}
+              onSelect={(client) => {
+                setCreatingClient(false)
+                setClientId(client.id)
+                setFullName(personName(client.fullName))
+                setPhone(client.phone)
+              }}
+              onStartCreate={(draft) => {
+                setCreatingClient(true)
+                setClientId('')
+                setFullName(draft.fullName)
+                setPhone(draft.phone)
+              }}
+              onChangeName={setFullName}
+              onChangePhone={setPhone}
+              onClear={() => {
+                setCreatingClient(false)
+                setClientId('')
+                setFullName('')
+                setPhone(UZ_DEFAULT)
+                loadClients().catch(() => {})
+              }}
+            />
+            <div className="space-y-2">
+              <label className="block">
+                <span className="mb-1 block text-sm text-muted">Итог</span>
+                <input
+                  value={formatAmountInput(amount)}
+                  data-last={showDeposit ? undefined : '1'}
+                  onChange={(e) => setAmount(formatAmountInput(e.target.value))}
+                  inputMode="numeric"
+                  enterKeyHint={showDeposit ? 'next' : 'done'}
+                  placeholder="0"
+                  className="w-full rounded-xl border border-line px-3 py-2.5 outline-none"
+                />
+              </label>
               <button
                 type="button"
                 onClick={() => {
-                  setCreatingClient(true)
-                  if (!phone.trim()) setPhone(UZ_DEFAULT)
+                  if (showDeposit) setPaid('')
+                  setShowDeposit((open) => !open)
                 }}
-                className={`rounded-full px-3 py-1 ${
-                  creatingClient ? 'bg-ink text-white' : 'border border-line'
+                className={`rounded-full px-3 py-1 text-sm ${
+                  showDeposit ? 'bg-ink text-white' : 'border border-line'
                 }`}
               >
-                Новый клиент
+                Есть залог
               </button>
+              {showDeposit && (
+                <>
+                  <label className="block">
+                    <span className="mb-1 block text-sm text-muted">Залог</span>
+                    <input
+                      value={formatAmountInput(paid)}
+                      data-last="1"
+                      onChange={(e) => setPaid(formatAmountInput(e.target.value))}
+                      inputMode="numeric"
+                      enterKeyHint="done"
+                      placeholder="0"
+                      className="w-full rounded-xl border border-line px-3 py-2.5 outline-none"
+                    />
+                  </label>
+                  <div className="flex justify-between rounded-xl bg-paper px-3 py-2.5 text-sm">
+                    <span className="text-muted">Осталось</span>
+                    <span className="font-medium">
+                      {parseAmount(amount) == null
+                        ? '—'
+                        : formatSum(
+                            Math.max(
+                              0,
+                              (parseAmount(amount) ?? 0) - (parseAmount(paid) ?? 0),
+                            ),
+                          )}
+                    </span>
+                  </div>
+                </>
+              )}
             </div>
-            {creatingClient ? (
-              <>
-                <label className="block">
-                  <span className="mb-1 block text-sm text-muted">ФИО</span>
-                  <input
-                    required
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    enterKeyHint="next"
-                    className="w-full rounded-xl border border-line px-3 py-2.5 outline-none"
-                  />
-                </label>
-                <PhoneInput required value={phone} onChange={setPhone} enterKeyHint="next" />
-              </>
-            ) : (
-              <Select
-                label="Клиент"
-                required
-                searchable
-                searchPlaceholder="Имя или телефон"
-                value={clientId}
-                onChange={setClientId}
-                placeholder="Выберите клиента"
-                options={clients.map((c) => ({
-                  value: c.id,
-                  label: c.fullName,
-                  hint: c.phone,
-                }))}
-                onSearch={(query) => {
-                  loadClients(query).catch(() => {})
-                }}
-              />
-            )}
-            <label className="block">
-              <span className="mb-1 block text-sm text-muted">Сумма</span>
-              <input
-                value={formatAmountInput(amount)}
-                data-last="1"
-                onChange={(e) => setAmount(formatAmountInput(e.target.value))}
-                inputMode="numeric"
-                enterKeyHint="done"
-                placeholder="0"
-                className="w-full rounded-xl border border-line px-3 py-2.5 outline-none"
-              />
-            </label>
               </>
             )}
           </div>
@@ -583,21 +671,23 @@ export default function NewRxOrderSheet() {
               Далее
             </button>
           ) : (
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setStep('goods')}
-                className="w-1/3 rounded-xl border border-line py-3.5 text-sm"
-              >
-                Назад
-              </button>
-              <button
-                type="submit"
-                disabled={pending}
-                className="w-2/3 rounded-xl bg-ink py-3.5 text-sm font-medium text-white disabled:opacity-60"
-              >
-                {pending ? 'Сохраняем…' : 'Создать заказ'}
-              </button>
+            <div className="mx-auto w-full max-w-2xl">
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setStep('goods')}
+                  className="w-1/3 rounded-xl border border-line py-3.5 text-sm"
+                >
+                  Назад
+                </button>
+                <button
+                  type="submit"
+                  disabled={pending}
+                  className="w-2/3 rounded-xl bg-ink py-3.5 text-sm font-medium text-white disabled:opacity-60"
+                >
+                  {pending ? 'Сохраняем…' : 'Создать заказ'}
+                </button>
+              </div>
             </div>
           )}
         </div>

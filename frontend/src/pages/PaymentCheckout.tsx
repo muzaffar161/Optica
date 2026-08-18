@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api'
 import { useToast } from '../Toast'
 import { formatSum } from '../types'
+import { formatPersonName, personName } from '../name'
 import {
   PAYMENT_METHOD_LABEL,
   PAYMENT_STATUS_LABEL,
@@ -38,7 +39,7 @@ export default function PaymentCheckoutPage() {
     } else if (enabled[0]) {
       setMethod(enabled[0])
     }
-    if (row.payerName) setPayerName(row.payerName)
+    if (row.payerName) setPayerName(formatPersonName(row.payerName))
     if (row.cardLast4) setCardLast4(row.cardLast4)
   }
 
@@ -56,7 +57,7 @@ export default function PaymentCheckoutPage() {
         method: 'POST',
         body: JSON.stringify({
           paymentMethod: method,
-          payerName: payerName.trim() || undefined,
+          payerName: personName(payerName) || undefined,
           cardLast4: method === 'CARD_TRANSFER' ? cardLast4 : undefined,
         }),
       })
@@ -199,7 +200,10 @@ export default function PaymentCheckoutPage() {
                 <span className="mb-1 block text-muted">Имя плательщика</span>
                 <input
                   value={payerName}
-                  onChange={(e) => setPayerName(e.target.value)}
+                  autoCapitalize="characters"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  onChange={(e) => setPayerName(formatPersonName(e.target.value))}
                   className="w-full rounded-xl border border-line px-3 py-2.5"
                 />
               </label>
@@ -231,8 +235,11 @@ export default function PaymentCheckoutPage() {
                 <span className="mb-1 block text-muted">Имя плательщика</span>
                 <input
                   required
+                  autoCapitalize="characters"
+                  autoCorrect="off"
+                  spellCheck={false}
                   value={payerName}
-                  onChange={(e) => setPayerName(e.target.value)}
+                  onChange={(e) => setPayerName(formatPersonName(e.target.value))}
                   className="w-full rounded-xl border border-line px-3 py-2.5"
                 />
               </label>

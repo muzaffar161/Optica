@@ -47,6 +47,12 @@ export class OrdersController {
     );
   }
 
+  @Get('rx-suggestions')
+  @Access('orders', 'view')
+  rxSuggestions(@CurrentUser() user: AuthUser) {
+    return this.ordersService.rxSuggestions(opticsIdOf(user));
+  }
+
   @Post()
   @Access('orders', 'edit')
   async create(@CurrentUser() user: AuthUser, @Body() dto: CreateOrderDto) {

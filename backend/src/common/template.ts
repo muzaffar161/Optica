@@ -25,6 +25,8 @@ export const MESSAGE_TEMPLATES: MessageTemplatePreset[] = [
 {rx}
 Линза: {lens}
 Оправа: {frame}
+Итог: {total}
+Оплачено: {paid}
 К оплате: {amount}
 
 📍 {opticsName}, {address}
@@ -41,6 +43,8 @@ export const MESSAGE_TEMPLATES: MessageTemplatePreset[] = [
 {rx}
 Линза: {lens}
 Оправа: {frame}
+Итог: {total}
+Оплачено: {paid}
 К оплате: {amount}
 
 📍 {opticsName}, {address}
@@ -93,14 +97,27 @@ export function polishMessage(text: string) {
   const lines = text.split('\n').filter((line) => {
     const t = line.trim();
     if (!t) return true;
-    if (/^(линза|оправа|рецепт|к оплате|салон|адрес|ориентир|часы|телефон)\s*:?\s*$/i.test(t)) {
+    if (/укажите (адрес|ориентир) в настройках/i.test(t)) return false;
+    if (/^(линза|оправа|рецепт|итог|оплачено|к оплате|салон|адрес|ориентир|часы|телефон)\s*:?\s*$/i.test(t)) {
       return false;
     }
     if (/^ориентир\s+[—-]\s*$/i.test(t)) return false;
     if (/^[📍🕘📞]\s*$/.test(t)) return false;
     return true;
   });
-  return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  return lines
+    .map((line) =>
+      /^[📍]/.test(line.trim()) ? line.replace(/,\s*$/, '') : line,
+    )
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+export function publicPlace(value?: string | null) {
+  const text = value?.trim() ?? '';
+  if (!text || /укажите/i.test(text)) return '';
+  return text;
 }
 
 export function firstNameOf(fullName: string) {
@@ -110,4 +127,27 @@ export function firstNameOf(fullName: string) {
 export function formatAmount(amount?: number | null) {
   if (amount == null) return '';
   return `${amount.toLocaleString('ru-RU')} сум`;
+}
+
+export function moneyVars(amount?: number | null, paidAmount?: number | null) {
+  const paid = Math.max(0, paidAmount ?? 0);
+  const due = amount == null ? null : Math.max(0, amount - paid);
+  const showPaid = paid > 0 && amount != null;
+  return {
+    total: showPaid ? formatAmount(amount) : '',
+    paid: showPaid ? formatAmount(paid) : '',
+    amount: formatAmount(due ?? amount),
+  };
+}
+
+export function withPaymentPlaceholders(template: string, paidAmount?: number | null) {
+  if (!paidAmount || paidAmount <= 0) return template;
+  if (template.includes('{paid}') || template.includes('{total}')) return template;
+  if (template.includes('К оплате: {amount}')) {
+    return template.replace(
+      'К оплате: {amount}',
+      'Итог: {total}\nОплачено: {paid}\nК оплате: {amount}',
+    );
+  }
+  return `${template}\n\nИтог: {total}\nОплачено: {paid}\nК оплате: {amount}`;
 }

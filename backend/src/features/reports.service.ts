@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { SubscriptionService } from '../billing/subscription.service';
 import { featuresOf } from '../common/plan-features';
+import { parseRxJson } from '../common/rx';
 
 function startOfMonth(d = new Date()) {
   return new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0, 0);
@@ -26,6 +27,25 @@ function dayKey(d: Date) {
 
 function sumAmounts(rows: { amount: number | null }[]) {
   return rows.reduce((sum, row) => sum + (row.amount ?? 0), 0);
+}
+
+function bump(
+  map: Map<string, { name: string; qty: number }>,
+  raw: string,
+  qty = 1,
+) {
+  const name = raw.replace(/\s+/g, ' ').trim();
+  if (!name) return;
+  const key = name.toLowerCase().replace(/ё/g, 'е');
+  const cur = map.get(key);
+  if (cur) cur.qty += qty;
+  else map.set(key, { name, qty });
+}
+
+function topOf(map: Map<string, { name: string; qty: number }>, take = 8) {
+  return [...map.values()]
+    .sort((a, b) => b.qty - a.qty)
+    .slice(0, take);
 }
 
 @Injectable()
@@ -85,6 +105,7 @@ export class ReportsService {
           kind: true,
           opticsId: true,
           clientId: true,
+          rxJson: true,
           items: { select: { name: true, qty: true } },
         },
       }),
@@ -163,7 +184,9 @@ export class ReportsService {
     const days: { day: string; orders: number; revenue: number }[] = [];
     const byDay = new Map<string, { orders: number; revenue: number }>();
     const byWeekday = [0, 0, 0, 0, 0, 0, 0];
-    const itemMap = new Map<string, number>();
+    const itemMap = new Map<string, { name: string; qty: number }>();
+    const lensMap = new Map<string, { name: string; qty: number }>();
+    const frameMap = new Map<string, { name: string; qty: number }>();
     let pickupHours = 0;
     let pickupCount = 0;
 
@@ -175,7 +198,12 @@ export class ReportsService {
       byDay.set(key, cur);
       byWeekday[row.createdAt.getDay()] += 1;
       for (const item of row.items) {
-        itemMap.set(item.name, (itemMap.get(item.name) || 0) + item.qty);
+        bump(itemMap, item.name, item.qty);
+      }
+      const rx = parseRxJson(row.rxJson);
+      if (rx) {
+        bump(lensMap, rx.lens ?? '');
+        bump(frameMap, rx.frame ?? '');
       }
       if (row.status === 'picked_up') {
         const hours = (row.updatedAt.getTime() - row.createdAt.getTime()) / 36e5;
@@ -195,10 +223,9 @@ export class ReportsService {
 
     const picked = byStatus.picked_up || 0;
     const cancelled = byStatus.cancelled || 0;
-    const topItems = [...itemMap.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 8)
-      .map(([name, qty]) => ({ name, qty }));
+    const topItems = topOf(itemMap);
+    const topLenses = topOf(lensMap);
+    const topFrames = topOf(frameMap);
 
     const extended = {
       avgCheck,
@@ -209,6 +236,8 @@ export class ReportsService {
       repeatClients: returning.length,
       avgPickupHours: pickupCount ? Math.round((pickupHours / pickupCount) * 10) / 10 : null,
       byKind,
+      topLenses,
+      topFrames,
       byWeekday,
       notifications: Object.fromEntries(
         notifications.map((row) => [row.channel, row._count.channel]),

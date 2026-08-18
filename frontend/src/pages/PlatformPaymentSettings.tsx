@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { api } from '../api'
 import { useToast } from '../Toast'
 import FilePick from '../components/FilePick'
+import { formatPersonName, personName } from '../name'
 import type { PaymentSettings } from '../payment'
 
 export default function PlatformPaymentSettings() {
@@ -14,6 +15,7 @@ export default function PlatformPaymentSettings() {
     const row = await api<PaymentSettings>('/platform/payment-settings')
     setForm({
       ...row,
+      cardOwner: formatPersonName(row.cardOwner),
       clickEnabled: row.clickEnabled !== false,
       cardEnabled: row.cardEnabled !== false,
     })
@@ -40,7 +42,7 @@ export default function PlatformPaymentSettings() {
           clickAccount: form.clickAccount,
           cardInstructions: form.cardInstructions,
           cardNumber: form.cardNumber,
-          cardOwner: form.cardOwner,
+          cardOwner: personName(form.cardOwner),
           paymentExpireHours: form.paymentExpireHours,
           clickEnabled: form.clickEnabled,
           cardEnabled: form.cardEnabled,
@@ -126,7 +128,10 @@ export default function PlatformPaymentSettings() {
           <span className="mb-1 block text-sm text-muted">Получатель</span>
           <input
             value={form.cardOwner}
-            onChange={(e) => setForm({ ...form, cardOwner: e.target.value })}
+            autoCapitalize="characters"
+            autoCorrect="off"
+            spellCheck={false}
+            onChange={(e) => setForm({ ...form, cardOwner: formatPersonName(e.target.value) })}
             className="w-full rounded-xl border border-line px-3 py-2.5"
           />
         </label>

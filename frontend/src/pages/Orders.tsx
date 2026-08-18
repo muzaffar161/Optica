@@ -24,7 +24,7 @@ import ArchiveTabs, { ArchiveAction } from '../components/ArchiveTabs'
 import {
   STATUS_LABEL,
   formatDate,
-  formatSum,
+  formatOrderPay,
   hasCatalog,
   hasRx,
   featuresOf,
@@ -208,6 +208,13 @@ export default function Orders() {
     return () => window.clearTimeout(timer)
   }, [status, q, archive])
 
+  function toastNotify(updated: Order) {
+    const channel = lastChannel(updated)
+    if (channel === 'telegram') toast('Отправлено в Telegram')
+    else if (channel === 'sms') toast('SMS-заглушка (Telegram недоступен)')
+    else toast('Уведомление обработано')
+  }
+
   async function changeStatus(order: Order, next: OrderStatus) {
     try {
       const updated = await api<Order>(`/orders/${order.id}`, {
@@ -215,6 +222,9 @@ export default function Orders() {
         body: JSON.stringify({ status: next }),
       })
       setOrders((prev) => prev.map((o) => (o.id === updated.id ? updated : o)))
+      if (next === 'ready' && order.status !== 'ready') {
+        toastNotify(updated)
+      }
       await load(page)
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Ошибка', 'err')
@@ -229,10 +239,7 @@ export default function Orders() {
         { method: 'POST' },
       )
       setOrders((prev) => prev.map((o) => (o.id === updated.id ? updated : o)))
-      const channel = lastChannel(updated)
-      if (channel === 'telegram') toast('Отправлено в Telegram')
-      else if (channel === 'sms') toast('SMS-заглушка (Telegram недоступен)')
-      else toast('Уведомление обработано')
+      toastNotify(updated)
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Ошибка', 'err')
     } finally {
@@ -416,7 +423,7 @@ export default function Orders() {
                 <Highlight text={order.title} query={q} />
                 <OrderPhotos order={order} />
                 {order.amount != null && (
-                  <div className="mt-1 text-xs text-brass-dark">{formatSum(order.amount)}</div>
+                  <div className="mt-1 text-xs text-brass-dark">{formatOrderPay(order)}</div>
                 )}
               </div>
               <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -511,7 +518,7 @@ export default function Orders() {
                       <OrderPhotos order={order} />
                       {order.amount != null && (
                         <div className="mt-1 text-xs text-brass-dark">
-                          {formatSum(order.amount)}
+                          {formatOrderPay(order)}
                         </div>
                       )}
                     </td>

@@ -9,6 +9,11 @@ import { canEdit } from '../access'
 
 const PAGE_SIZE = 50
 
+function subject(n: NotificationLog) {
+  if (n.kind === 'checkup') return 'Напоминание об осмотре'
+  return n.order?.title ?? ''
+}
+
 function channelLabel(n: NotificationLog) {
   if (n.channel === 'telegram') return 'Telegram'
   return n.status === 'mocked' ? 'SMS (заглушка)' : 'SMS'
@@ -92,7 +97,7 @@ export default function Notifications() {
               </div>
               <div className="shrink-0 text-xs text-muted">{formatDate(n.createdAt)}</div>
             </div>
-            <div className="mt-2 text-sm">{n.order?.title}</div>
+            <div className="mt-2 text-sm">{subject(n)}</div>
             <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted">
               <span>{channelLabel(n)}</span>
               <Status n={n} />
@@ -146,7 +151,7 @@ export default function Notifications() {
                   {n.order?.client.fullName}
                   <div className="text-xs text-muted">{n.order?.client.phone}</div>
                 </td>
-                <td className="px-4 py-3">{n.order?.title}</td>
+                <td className="px-4 py-3">{subject(n)}</td>
                 <td className="px-4 py-3">{channelLabel(n)}</td>
                 <td className="px-4 py-3">
                   <Status n={n} />

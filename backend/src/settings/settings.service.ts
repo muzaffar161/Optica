@@ -80,6 +80,15 @@ export class SettingsService {
         data.templateCustom = true;
       }
     }
+    if (typeof dto.checkupRemindEnabled === 'boolean') {
+      data.checkupRemindEnabled = dto.checkupRemindEnabled;
+    }
+    if (typeof dto.checkupIntervalMonths === 'number') {
+      data.checkupIntervalMonths = dto.checkupIntervalMonths;
+    }
+    if (typeof dto.checkupNotifyDay === 'number') {
+      data.checkupNotifyDay = dto.checkupNotifyDay;
+    }
     return this.prisma.settings.update({
       where: { opticsId },
       data,

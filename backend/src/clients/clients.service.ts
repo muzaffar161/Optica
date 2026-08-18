@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateClientDto } from './dto/create-client.dto';
 import { UpdateClientDto } from './dto/update-client.dto';
 import { foldText, toE164 } from '../common/phone';
+import { personName } from '../common/person-name';
 import { pageParams } from '../common/pagination';
 import { searchTokens } from '../common/search';
 import {
@@ -104,11 +105,12 @@ export class ClientsService {
       throw new BadRequestException('Некорректный номер телефона');
     }
     try {
+      const fullName = personName(dto.fullName);
       return await this.prisma.client.create({
         data: {
           opticsId,
-          fullName: dto.fullName.trim(),
-          nameKey: foldText(dto.fullName),
+          fullName,
+          nameKey: foldText(fullName),
           phone,
         },
       });
@@ -127,8 +129,9 @@ export class ClientsService {
     await this.findOne(opticsId, id);
     const data: Prisma.ClientUpdateInput = {};
     if (dto.fullName) {
-      data.fullName = dto.fullName.trim();
-      data.nameKey = foldText(dto.fullName);
+      const fullName = personName(dto.fullName);
+      data.fullName = fullName;
+      data.nameKey = foldText(fullName);
     }
     if (dto.phone) {
       const phone = toE164(dto.phone);

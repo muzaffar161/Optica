@@ -57,6 +57,7 @@ export type Client = {
 export type NotificationLog = {
   id: string
   orderId: string
+  kind?: string
   channel: NotificationChannel
   status: DeliveryStatus
   message: string
@@ -96,6 +97,7 @@ export type Order = {
   title: string
   kind?: OrderKind
   amount?: number | null
+  paidAmount?: number | null
   rxJson?: string | null
   status: OrderStatus
   clientId: string
@@ -120,6 +122,9 @@ export type Settings = {
   template: string
   templateKey?: string
   templateCustom?: boolean
+  checkupRemindEnabled?: boolean
+  checkupIntervalMonths?: number
+  checkupNotifyDay?: number
 }
 
 export const STATUS_LABEL: Record<OrderStatus, string> = {
@@ -142,6 +147,14 @@ export function formatDate(iso: string) {
 export function formatSum(amount?: number | null) {
   if (amount == null) return ''
   return `${amount.toLocaleString('ru-RU')} сум`
+}
+
+export function formatOrderPay(order: { amount?: number | null; paidAmount?: number | null }) {
+  if (order.amount == null) return ''
+  const paid = Math.max(0, order.paidAmount ?? 0)
+  const due = Math.max(0, order.amount - paid)
+  if (paid <= 0) return formatSum(order.amount)
+  return `итог ${formatSum(order.amount)} · оплачено ${formatSum(paid)} · к оплате ${formatSum(due)}`
 }
 
 export function hasCatalog(user?: AuthUser | null) {

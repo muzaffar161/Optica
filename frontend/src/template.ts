@@ -5,7 +5,9 @@ export const TEMPLATE_VARS = [
   { key: 'rx', label: 'Рецепт', sample: 'OD Sph +1,25 Cyl -0,50 ax 180' },
   { key: 'lens', label: 'Линза', sample: 'Essilor 1.6 AS' },
   { key: 'frame', label: 'Оправа', sample: 'Ray-Ban RB5228' },
-  { key: 'amount', label: 'Сумма', sample: '250 000 сум' },
+  { key: 'amount', label: 'К оплате', sample: '300 000 сум' },
+  { key: 'total', label: 'Итог', sample: '500 000 сум' },
+  { key: 'paid', label: 'Оплачено', sample: '200 000 сум' },
   { key: 'opticsName', label: 'Название оптики', sample: 'Оптика Юнусабад' },
   { key: 'address', label: 'Адрес', sample: 'ул. Амира Темура 12' },
   { key: 'landmark', label: 'Ориентир', sample: 'рядом с "Korzinka"' },
@@ -44,6 +46,8 @@ export const MESSAGE_TEMPLATES: MessageTemplatePreset[] = [
 {rx}
 Линза: {lens}
 Оправа: {frame}
+Итог: {total}
+Оплачено: {paid}
 К оплате: {amount}
 
 📍 {opticsName}, {address}
@@ -60,6 +64,8 @@ export const MESSAGE_TEMPLATES: MessageTemplatePreset[] = [
 {rx}
 Линза: {lens}
 Оправа: {frame}
+Итог: {total}
+Оплачено: {paid}
 К оплате: {amount}
 
 📍 {opticsName}, {address}
@@ -102,7 +108,8 @@ export function polishMessage(text: string) {
   const lines = text.split('\n').filter((line) => {
     const t = line.trim()
     if (!t) return true
-    if (/^(линза|оправа|рецепт|к оплате|салон|адрес|ориентир|часы|телефон)\s*:?\s*$/i.test(t)) {
+    if (/укажите (адрес|ориентир) в настройках/i.test(t)) return false
+    if (/^(линза|оправа|рецепт|итог|оплачено|к оплате|салон|адрес|ориентир|часы|телефон)\s*:?\s*$/i.test(t)) {
       return false
     }
     if (/^ориентир\s+[—-]\s*$/i.test(t)) return false

@@ -35,3 +35,9 @@ export function toE164(value: string): string | null {
     parsePhoneNumberFromString(value) || parsePhoneNumberFromString(value, 'UZ')
   return parsed?.isValid() ? parsed.number : null
 }
+
+export function looksLikePhone(value: string) {
+  const digits = value.replace(/\D/g, '')
+  const letters = value.replace(/[\d\s+().-]/g, '')
+  return digits.length >= 3 && letters.length === 0
+}

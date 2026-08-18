@@ -20,7 +20,7 @@ import {
 } from '../common/archive';
 import { searchTokens } from '../common/search';
 import { opticsFeatures } from '../common/optics-features';
-import { formatRxTitle, signedRx } from '../common/rx';
+import { formatRxTitle, parseRxJson, signedRx } from '../common/rx';
 
 const orderInclude = {
   client: true,
@@ -30,6 +30,13 @@ const orderInclude = {
 
 function clean(value?: string) {
   return value?.trim() ?? '';
+}
+
+function clampPaid(amount?: number, paid?: number) {
+  const p = paid ?? 0;
+  if (p <= 0) return 0;
+  if (typeof amount === 'number') return Math.min(p, amount);
+  return p;
 }
 
 function rxHasContent(rx?: RxPayloadDto) {
@@ -125,6 +132,40 @@ export class OrdersService {
     };
   }
 
+  async rxSuggestions(opticsId: string) {
+    const orders = await this.prisma.order.findMany({
+      where: { opticsId, kind: OrderKind.rx, rxJson: { not: null } },
+      orderBy: { createdAt: 'desc' },
+      take: 80,
+      select: { rxJson: true },
+    });
+    const lenses: string[] = [];
+    const frames: string[] = [];
+    const seenLens = new Set<string>();
+    const seenFrame = new Set<string>();
+    for (const order of orders) {
+      const rx = parseRxJson(order.rxJson);
+      const lens = rx?.lens?.trim();
+      const frame = rx?.frame?.trim();
+      if (lens) {
+        const key = lens.toLocaleLowerCase('ru-RU');
+        if (!seenLens.has(key)) {
+          seenLens.add(key);
+          lenses.push(lens);
+        }
+      }
+      if (frame) {
+        const key = frame.toLocaleLowerCase('ru-RU');
+        if (!seenFrame.has(key)) {
+          seenFrame.add(key);
+          frames.push(frame);
+        }
+      }
+      if (lenses.length >= 8 && frames.length >= 8) break;
+    }
+    return { lenses: lenses.slice(0, 8), frames: frames.slice(0, 8) };
+  }
+
   async findOne(opticsId: string, id: string) {
     const order = await this.prisma.order.findFirst({
       where: { id, opticsId },
@@ -167,17 +208,15 @@ export class OrdersService {
       const title = [dto.title?.trim() || formatRxTitle(rx, dto.amount), dto.note?.trim()]
         .filter(Boolean)
         .join('. ');
-      return this.prisma.order.create({
-        data: {
-          title,
-          titleKey: foldText(title),
-          kind,
-          amount: dto.amount,
-          rxJson: JSON.stringify(rx),
-          clientId,
-          opticsId,
-        },
-        include: orderInclude,
+      return this.createOrder(clientId, {
+        title,
+        titleKey: foldText(title),
+        kind,
+        amount: dto.amount,
+        paidAmount: clampPaid(dto.amount, dto.paidAmount),
+        rxJson: JSON.stringify(rx),
+        client: { connect: { id: clientId } },
+        optics: { connect: { id: opticsId } },
       });
     }
 
@@ -217,23 +256,33 @@ export class OrdersService {
       throw new BadRequestException('Выберите товары или укажите название');
     }
 
-    return this.prisma.order.create({
-      data: {
-        title,
-        titleKey: foldText(title),
-        kind: OrderKind.catalog,
-        amount: dto.amount,
-        clientId,
-        opticsId,
-        items: lines.length ? { create: lines } : undefined,
-      },
-      include: orderInclude,
+    return this.createOrder(clientId, {
+      title,
+      titleKey: foldText(title),
+      kind: OrderKind.catalog,
+      amount: dto.amount,
+      paidAmount: clampPaid(dto.amount, dto.paidAmount),
+      client: { connect: { id: clientId } },
+      optics: { connect: { id: opticsId } },
+      items: lines.length ? { create: lines } : undefined,
     });
   }
 
+  private async createOrder(clientId: string, data: Prisma.OrderCreateInput) {
+    const order = await this.prisma.order.create({
+      data,
+      include: orderInclude,
+    });
+    await this.prisma.client.update({
+      where: { id: clientId },
+      data: { lastVisitAt: order.createdAt },
+    });
+    return order;
+  }
+
   async update(opticsId: string, id: string, dto: UpdateOrderDto) {
-    await this.findOne(opticsId, id);
-    return this.prisma.order.update({
+    const prev = await this.findOne(opticsId, id);
+    const row = await this.prisma.order.update({
       where: { id },
       data: {
         ...(dto.title
@@ -244,6 +293,11 @@ export class OrdersService {
       },
       include: orderInclude,
     });
+    if (dto.status === OrderStatus.ready && prev.status !== OrderStatus.ready) {
+      await this.events.emitAsync('order.ready', { orderId: id });
+      return this.findOne(opticsId, id);
+    }
+    return row;
   }
 
   async remove(opticsId: string, id: string) {
