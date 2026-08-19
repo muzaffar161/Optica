@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -21,18 +20,10 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthUser } from '../common/auth-user';
 import { opticsIdOf } from '../common/optics-scope';
 import { Access } from '../common/decorators/access.decorator';
-import type { UploadedImage } from '../uploads/upload';
+import { IMAGE_UPLOAD, type UploadedImage } from '../uploads/upload';
+import { RateLimit } from '../common/rate-limit.decorator';
 
-const photoUpload = FileInterceptor('photo', {
-  limits: { fileSize: 5 * 1024 * 1024 },
-  fileFilter: (_req, file, cb) => {
-    if (!file.mimetype.startsWith('image/')) {
-      cb(new BadRequestException('Нужно изображение (jpg, png, webp)'), false);
-      return;
-    }
-    cb(null, true);
-  },
-});
+const photoUpload = FileInterceptor('photo', IMAGE_UPLOAD);
 
 @Roles(Role.optics)
 @Controller('products')
@@ -59,6 +50,7 @@ export class ProductsController {
 
   @Post()
   @Access('products', 'edit')
+  @RateLimit({ name: 'upload', limit: 20, windowMs: 10 * 60_000, by: 'user' })
   @UseInterceptors(photoUpload)
   create(
     @CurrentUser() user: AuthUser,
@@ -70,6 +62,7 @@ export class ProductsController {
 
   @Patch(':id')
   @Access('products', 'edit')
+  @RateLimit({ name: 'upload', limit: 20, windowMs: 10 * 60_000, by: 'user' })
   @UseInterceptors(photoUpload)
   update(
     @CurrentUser() user: AuthUser,

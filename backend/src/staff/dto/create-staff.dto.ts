@@ -1,13 +1,15 @@
-import { IsBoolean, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsBoolean, IsEnum, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 import { AccessLevel } from '@prisma/client';
 
 export class CreateStaffDto {
   @IsString()
   @MinLength(3)
+  @MaxLength(40)
   username: string;
 
   @IsString()
-  @MinLength(6)
+  @MinLength(8)
+  @MaxLength(100)
   password: string;
 
   @IsOptional()

@@ -271,22 +271,27 @@ export class SetPaymentStatusDto {
 export class UpdatePaymentSettingsDto {
   @IsOptional()
   @IsString()
+  @MaxLength(2000)
   clickInstructions?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(80)
   clickAccount?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(2000)
   cardInstructions?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(40)
   cardNumber?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(80)
   cardOwner?: string;
 
   @IsOptional()

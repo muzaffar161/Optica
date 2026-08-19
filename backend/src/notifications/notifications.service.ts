@@ -1,13 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { OnEvent } from '@nestjs/event-emitter';
+import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import { TelegramService } from '../telegram/telegram.service';
 import { SmsService } from './sms.service';
 import { SmsWalletService } from '../billing/sms-wallet.service';
-import { renderTemplate, firstNameOf, moneyVars, withPaymentPlaceholders, publicPlace } from '../common/template';
+import { renderTemplate, firstNameOf, moneyVars, withPaymentPlaceholders, publicPlace, langsOf, attachRxPlaceholder, pickSmsBody, fitSms } from '../common/template';
 import { formatRxBody, formatRxTitle, parseRxJson } from '../common/rx';
+import { MessageTemplatesService } from '../settings/message-templates.service';
 import { pageParams } from '../common/pagination';
+import { PlatformSmsService } from '../billing/platform-sms.service';
 import {
   archiveCutoff,
   archiveData,
@@ -26,6 +28,9 @@ export class NotificationsService {
     private readonly telegram: TelegramService,
     private readonly sms: SmsService,
     private readonly wallet: SmsWalletService,
+    private readonly events: EventEmitter2,
+    private readonly catalog: MessageTemplatesService,
+    private readonly platformSms: PlatformSmsService,
   ) {}
 
   @OnEvent('order.ready')
@@ -104,15 +109,11 @@ export class NotificationsService {
     const lens = rx?.lens?.trim() ?? '';
     const frame = rx?.frame?.trim() ?? '';
     const rxText = rx ? formatRxBody(rx) : '';
-    let template = settings.template;
-    if (rxText && !template.includes('{rx}') && !template.includes('{orderTitle}')) {
-      template = template.includes('Линза:')
-        ? template.replace('Линза:', 'Рецепт:\n{rx}\nЛинза:')
-        : `${template}\n\n{rx}`;
-    }
-    template = withPaymentPlaceholders(template, order.paidAmount);
+    const tpl = settings.templateId
+      ? await this.prisma.messageTemplate.findUnique({ where: { id: settings.templateId } })
+      : await this.catalog.defaultRow();
     const pay = moneyVars(order.amount, order.paidAmount);
-    const message = renderTemplate(template, {
+    const vars = {
       fullName: order.client.fullName,
       firstName: firstNameOf(order.client.fullName),
       orderTitle: rx ? formatRxTitle(rx, order.amount) || order.title : order.title,
@@ -125,16 +126,45 @@ export class NotificationsService {
       landmark: publicPlace(settings.landmark),
       hours: settings.hours || '',
       phone: settings.phone || '',
-    });
+    };
+    const telegram: string[] = [];
+    const sms: string[] = [];
+    const limit = await this.platformSms.charLimit();
+    for (const lang of langsOf(settings.messageLang)) {
+      let body =
+        lang === 'uz'
+          ? (tpl?.bodyUz || '').trim()
+          : (tpl?.bodyRu || settings.template || '').trim();
+      if (!body && lang === 'uz') continue;
+      if (!body) body = settings.template;
+      body = attachRxPlaceholder(body, rxText);
+      body = withPaymentPlaceholders(body, order.paidAmount, lang);
+      const text = renderTemplate(body, vars);
+      const smsBody = pickSmsBody(tpl, lang, settings.template);
+      const smsText = smsBody
+        ? fitSms(renderTemplate(smsBody, vars), limit)
+        : fitSms(text, limit);
+      if (!text && !smsText) continue;
+      telegram.push(text || smsText);
+      sms.push(smsText || text);
+    }
+    if (!telegram.length && !sms.length) {
+      this.logger.warn(`Пустой шаблон для заказа ${orderId}`);
+      return;
+    }
 
     const ok = await this.deliver({
       opticsId: order.opticsId,
       organizationId: order.optics.organizationId,
       client: order.client,
       orderId,
-      message,
+      messages: telegram,
+      smsMessages: sms,
       kind: 'order',
-      smsDescription: `SMS клиенту ${order.client.fullName}`,
+      smsDescription:
+        sms.length > 1
+          ? `SMS клиенту ${order.client.fullName} (2)`
+          : `SMS клиенту ${order.client.fullName}`,
     });
     if (ok) {
       await this.markNotified(orderId);
@@ -150,44 +180,64 @@ export class NotificationsService {
       telegramChatId: string | null;
     };
     orderId: string;
-    message: string;
+    message?: string;
+    messages?: string[];
+    smsMessages?: string[];
     kind?: string;
     smsDescription?: string;
   }) {
     const kind = opts.kind || 'order';
+    const telegram = (opts.messages?.length ? opts.messages : opts.message ? [opts.message] : [])
+      .map((row) => row.trim())
+      .filter(Boolean);
+    const smsTexts = (opts.smsMessages?.length ? opts.smsMessages : telegram)
+      .map((row) => row.trim())
+      .filter(Boolean);
+    if (!telegram.length && !smsTexts.length) return false;
     const chatId = opts.client.telegramChatId;
-    if (chatId) {
-      const tg = await this.telegram.sendMessage(chatId, opts.message);
-      if (tg.ok) {
-        await this.log({
-          opticsId: opts.opticsId,
-          orderId: opts.orderId,
-          kind,
-          channel: 'telegram',
-          status: 'sent',
-          message: opts.message,
-        });
-        return true;
+    let remaining = smsTexts;
+    if (chatId && telegram.length) {
+      let sentTg = 0;
+      for (const text of telegram) {
+        const tg = await this.telegram.sendMessage(chatId, text);
+        if (tg.ok) {
+          await this.log({
+            opticsId: opts.opticsId,
+            orderId: opts.orderId,
+            kind,
+            channel: 'telegram',
+            status: 'sent',
+            message: text,
+          });
+          this.trackNotify(opts, 'telegram', true, kind);
+          sentTg += 1;
+        } else {
+          await this.log({
+            opticsId: opts.opticsId,
+            orderId: opts.orderId,
+            kind,
+            channel: 'telegram',
+            status: 'failed',
+            message: text,
+            error: tg.error,
+          });
+          this.logger.warn(
+            `Telegram не доставлен (${tg.blocked ? 'бот заблокирован' : tg.error}) — fallback на SMS`,
+          );
+          break;
+        }
       }
-      await this.log({
-        opticsId: opts.opticsId,
-        orderId: opts.orderId,
-        kind,
-        channel: 'telegram',
-        status: 'failed',
-        message: opts.message,
-        error: tg.error,
-      });
-      this.logger.warn(
-        `Telegram не доставлен (${tg.blocked ? 'бот заблокирован' : tg.error}) — fallback на SMS`,
-      );
+      if (sentTg === telegram.length) return true;
+      remaining = smsTexts.slice(sentTg);
     }
+    if (!remaining.length) return true;
 
+    const cost = remaining.length;
     let debitId: string | null = null;
     try {
       const debit = await this.wallet.debit({
         organizationId: opts.organizationId,
-        amount: 1,
+        amount: cost,
         type: 'MESSAGE_SENT',
         description: opts.smsDescription || `SMS клиенту ${opts.client.fullName}`,
       });
@@ -201,49 +251,72 @@ export class NotificationsService {
         kind,
         channel: 'sms',
         status: 'failed',
-        message: opts.message,
+        message: remaining.join('\n'),
         error: reason,
       });
       this.logger.warn(`SMS не отправлено: ${reason}`);
+      this.trackNotify(opts, 'sms', false, kind);
       return false;
     }
 
+    let sent = 0;
     try {
-      await this.sms.send(opts.client.phone, opts.message);
+      for (const text of remaining) {
+        await this.sms.send(opts.client.phone, text);
+        const logged = await this.log({
+          opticsId: opts.opticsId,
+          orderId: opts.orderId,
+          kind,
+          channel: 'sms',
+          status: 'mocked',
+          message: text,
+        });
+        if (debitId && sent === 0) {
+          await this.prisma.smsTransaction.update({
+            where: { id: debitId },
+            data: { notificationId: logged.id },
+          });
+        }
+        sent += 1;
+      }
     } catch (err) {
-      await this.wallet.credit({
-        organizationId: opts.organizationId,
-        amount: 1,
-        type: 'REFUND',
-        description: 'Возврат: SMS не отправилось',
-      });
+      const leftover = cost - sent;
+      if (leftover > 0) {
+        await this.wallet.credit({
+          organizationId: opts.organizationId,
+          amount: leftover,
+          type: 'REFUND',
+          description: 'Возврат: SMS не отправилось',
+        });
+      }
       await this.log({
         opticsId: opts.opticsId,
         orderId: opts.orderId,
         kind,
         channel: 'sms',
         status: 'failed',
-        message: opts.message,
+        message: remaining.join('\n'),
         error: err instanceof Error ? err.message : 'Ошибка SMS',
       });
-      return false;
+      this.trackNotify(opts, 'sms', false, kind);
+      return sent > 0;
     }
-
-    const logged = await this.log({
-      opticsId: opts.opticsId,
-      orderId: opts.orderId,
-      kind,
-      channel: 'sms',
-      status: 'mocked',
-      message: opts.message,
-    });
-    if (debitId) {
-      await this.prisma.smsTransaction.update({
-        where: { id: debitId },
-        data: { notificationId: logged.id },
-      });
-    }
+    this.trackNotify(opts, 'sms', true, kind);
     return true;
+  }
+
+  private trackNotify(
+    opts: { opticsId: string; organizationId: string },
+    channel: 'telegram' | 'sms',
+    ok: boolean,
+    kind: string,
+  ) {
+    this.events.emit('usage.track', {
+      name: 'notify',
+      meta: { channel, ok, kind },
+      opticsId: opts.opticsId,
+      organizationId: opts.organizationId,
+    });
   }
 
   private markNotified(orderId: string) {

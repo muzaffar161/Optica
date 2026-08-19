@@ -17,6 +17,8 @@ import { PlatformModule } from './platform/platform.module';
 import { ProductsModule } from './products/products.module';
 import { CategoriesModule } from './categories/categories.module';
 import { StaffModule } from './staff/staff.module';
+import { RateLimitModule } from './common/rate-limit.module';
+import { RateLimitGuard } from './common/rate-limit.guard';
 
 @Module({
   imports: [
@@ -34,11 +36,16 @@ import { StaffModule } from './staff/staff.module';
     StaffModule,
     BillingModule,
     FeaturesModule,
+    RateLimitModule,
   ],
   providers: [
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: RateLimitGuard,
     },
     {
       provide: APP_GUARD,

@@ -21,12 +21,13 @@ import { AuditService } from './audit.service';
 import { ExportService } from './export.service';
 import { ApiKeyService } from './api-key.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { IsOptional, IsString, MinLength } from 'class-validator';
+import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 class CreateApiKeyDto {
   @IsOptional()
   @IsString()
   @MinLength(2)
+  @MaxLength(40)
   name?: string;
 }
 

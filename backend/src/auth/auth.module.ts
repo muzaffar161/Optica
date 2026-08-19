@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
+import { jwtSecret } from '../common/jwt-secret';
 
 @Module({
   imports: [
@@ -12,7 +13,7 @@ import { JwtStrategy } from './jwt.strategy';
     JwtModule.registerAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
-        secret: config.get<string>('JWT_SECRET', 'optika-dev-jwt-secret'),
+        secret: jwtSecret(config),
         signOptions: { expiresIn: '7d' },
       }),
     }),

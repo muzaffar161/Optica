@@ -18,6 +18,7 @@ import { PaymentSettingsService } from './payment-settings.service';
 import { SmsWalletService } from './sms-wallet.service';
 import { SmsPackageAdminService } from './plan.service';
 import { CreatePaymentDto, SubmitPaymentDto } from './dto/billing.dto';
+import { RateLimit } from '../common/rate-limit.decorator';
 
 @Roles(Role.optics)
 @Controller()
@@ -53,6 +54,7 @@ export class OrgBillingController {
   }
 
   @Post('billing/payments')
+  @RateLimit({ name: 'payment', limit: 10, windowMs: 10 * 60_000, by: 'org' })
   createPayment(@CurrentUser() user: AuthUser, @Body() dto: CreatePaymentDto) {
     this.ensureOrgOwner(user);
     return this.payments.create({
@@ -70,6 +72,7 @@ export class OrgBillingController {
   }
 
   @Post('billing/payments/:id/submit')
+  @RateLimit({ name: 'payment', limit: 10, windowMs: 10 * 60_000, by: 'org' })
   submitPayment(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
@@ -102,6 +105,7 @@ export class OrgBillingController {
   }
 
   @Post('sms/packages/:id/purchase')
+  @RateLimit({ name: 'payment', limit: 10, windowMs: 10 * 60_000, by: 'org' })
   buy(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     this.ensureOrgOwner(user);
     return this.payments.createSmsPackage(organizationIdOf(user), id);

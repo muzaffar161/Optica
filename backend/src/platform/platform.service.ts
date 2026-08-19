@@ -9,7 +9,8 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateOpticsDto } from './dto/create-optics.dto';
 import { UpdateOpticsDto } from './dto/update-optics.dto';
-import { DEFAULT_TEMPLATE, matchTemplateKey, MESSAGE_TEMPLATES } from '../common/template';
+import { DEFAULT_TEMPLATE, matchTemplateKey } from '../common/template';
+import { MessageTemplatesService } from '../settings/message-templates.service';
 import { normalizeOrderModes } from '../common/optics-features';
 import { SubscriptionService } from '../billing/subscription.service';
 
@@ -40,6 +41,7 @@ export class PlatformService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly subscriptions: SubscriptionService,
+    private readonly messageTemplates: MessageTemplatesService,
   ) {}
 
   async defaultConfig() {
@@ -58,7 +60,7 @@ export class PlatformService {
     const config = await this.defaultConfig();
     return {
       ...config,
-      templates: MESSAGE_TEMPLATES,
+      templates: await this.messageTemplates.list(),
     };
   }
 
@@ -73,10 +75,6 @@ export class PlatformService {
         defaultTemplateKey: key,
       },
       update: { defaultTemplate: template, defaultTemplateKey: key },
-    });
-    await this.prisma.settings.updateMany({
-      where: { templateCustom: false },
-      data: { template, templateKey: key },
     });
     return this.getConfig();
   }
@@ -200,6 +198,7 @@ export class PlatformService {
       throw new ConflictException('Такой логин уже занят');
     }
     const passwordHash = await bcrypt.hash(dto.password, 10);
+    const tpl = await this.messageTemplates.defaultRow();
     try {
       const created = await this.prisma.$transaction(async (tx) => {
         const modes = normalizeOrderModes(dto.catalogOrders, dto.rxOrders);
@@ -228,15 +227,16 @@ export class PlatformService {
         await tx.smsWallet.create({
           data: { organizationId: org.id, balance: 0 },
         });
-        const defaults = await this.defaultConfig();
         await tx.settings.create({
           data: {
             opticsId: optics.id,
             opticsName: dto.name.trim(),
             address: 'укажите адрес в настройках',
             landmark: 'укажите ориентир в настройках',
-            template: defaults.defaultTemplate,
-            templateKey: defaults.defaultTemplateKey,
+            template: tpl?.bodyRu || DEFAULT_TEMPLATE,
+            templateKey: tpl?.id || 'tpl_compact',
+            templateId: tpl?.id,
+            messageLang: 'ru',
           },
         });
         return tx.optics.findUniqueOrThrow({
@@ -299,12 +299,13 @@ export class PlatformService {
       include: opticsInclude,
     });
     if (dto.name || dto.template || dto.templateKey || dto.resetTemplate) {
-      const data: Prisma.SettingsUpdateManyMutationInput = {};
+      const data: Prisma.SettingsUncheckedUpdateManyInput = {};
       if (dto.name) data.opticsName = dto.name.trim();
       if (dto.resetTemplate) {
-        const defaults = await this.defaultConfig();
-        data.template = defaults.defaultTemplate;
-        data.templateKey = defaults.defaultTemplateKey;
+        const resetTpl = await this.messageTemplates.defaultRow();
+        data.template = resetTpl?.bodyRu || DEFAULT_TEMPLATE;
+        data.templateKey = resetTpl?.id || 'tpl_compact';
+        if (resetTpl?.id) data.templateId = resetTpl.id;
         data.templateCustom = false;
       } else if (dto.template) {
         data.template = dto.template.trim();

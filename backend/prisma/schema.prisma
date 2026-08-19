@@ -191,8 +191,28 @@ model Settings {
   checkupRemindEnabled  Boolean @default(true)
   checkupIntervalMonths Int     @default(6)
   checkupNotifyDay      Int     @default(1)
-  lastCheckupRunOn      String  @default("")
+  lastCheckupRunOn      String   @default("")
+  messageLang           String   @default("ru")
+  templateId            String?
+  messageTemplate       MessageTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
   updatedAt        DateTime @updatedAt
+
+  @@index([templateId])
+}
+
+model MessageTemplate {
+  id        String     @id @default(cuid())
+  name      String
+  hint      String     @default("")
+  kind      String     @default("salon")
+  bodyRu    String
+  bodyUz    String     @default("")
+  smsRu     String     @default("")
+  smsUz     String     @default("")
+  createdAt DateTime   @default(now())
+  settings  Settings[]
+
+  @@index([kind])
 }
 
 model PlatformConfig {
@@ -208,6 +228,9 @@ model PlatformConfig {
   paymentExpireHours   Int      @default(24)
   clickEnabled         Boolean  @default(true)
   cardEnabled          Boolean  @default(true)
+  smsBalance           Int      @default(0)
+  smsCharLimit         Int      @default(70)
+  botLink              String   @default("")
   updatedAt            DateTime @updatedAt
 }
 
@@ -355,6 +378,21 @@ model SmsWallet {
   updatedAt      DateTime     @updatedAt
 }
 
+model PlatformSmsTx {
+  id           String     @id @default(cuid())
+  amount       Int
+  type         SmsTxType
+  description  String     @default("")
+  balanceAfter Int
+  createdAt    DateTime   @default(now())
+}
+
+model ProductPhone {
+  phone      String    @id
+  welcomedAt DateTime?
+  createdAt  DateTime  @default(now())
+}
+
 model SmsTransaction {
   id             String        @id @default(cuid())
   organizationId String
@@ -398,6 +436,23 @@ model AuditEvent {
 
   @@index([organizationId, createdAt])
   @@index([opticsId])
+}
+
+model UsageEvent {
+  id             String   @id @default(cuid())
+  createdAt      DateTime @default(now())
+  name           String
+  opticsId       String?
+  organizationId String?
+  userId         String?
+  role           String   @default("")
+  path           String   @default("")
+  ms             Int?
+  meta           String   @default("")
+
+  @@index([createdAt])
+  @@index([name, createdAt])
+  @@index([opticsId, createdAt])
 }
 
 model ApiKey {

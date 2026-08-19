@@ -1,4 +1,4 @@
-import { IsOptional, IsString, Matches, MinLength } from 'class-validator';
+import { IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
 
 export class ResetPasswordDto {
   @IsOptional()
@@ -10,6 +10,7 @@ export class ResetPasswordDto {
   username?: string;
 
   @IsString()
-  @MinLength(6)
+  @MinLength(8)
+  @MaxLength(100)
   password: string;
 }

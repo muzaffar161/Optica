@@ -4,9 +4,10 @@ import { api } from '../api'
 import { useToast } from '../Toast'
 import ClientPicker from './ClientPicker'
 import { isPhoneValid, UZ_DEFAULT } from '../phone'
-import { draftLabel, ensureCurrent, holdCurrent, setCurrent } from '../orderDraft'
+import { draftLabel, ensureCurrent, holdCurrent, parseAmount, formatAmountInput, setCurrent } from '../orderDraft'
 import { personName } from '../name'
 import type { Category, Client, Page, Product } from '../types'
+import { track } from '../usage'
 
 type Cart = Record<string, number>
 
@@ -21,6 +22,7 @@ export default function NewOrderSheet() {
   const [productQ, setProductQ] = useState('')
   const [cart, setCart] = useState<Cart>(initial.cart)
   const [note, setNote] = useState(initial.note)
+  const [amount, setAmount] = useState(initial.amount)
   const [step, setStep] = useState<'goods' | 'client'>(initial.step)
   const [creatingClient, setCreatingClient] = useState(initial.creatingClient)
   const [clients, setClients] = useState<Client[]>([])
@@ -29,6 +31,26 @@ export default function NewOrderSheet() {
   const [phone, setPhone] = useState(initial.phone || UZ_DEFAULT)
   const [pending, setPending] = useState(false)
   const skipPersist = useRef(false)
+  const openedAt = useRef(Date.now())
+  const stepAt = useRef(Date.now())
+
+  function leaveStep(stepName: 'goods' | 'client') {
+    track('order_step', {
+      ms: Date.now() - stepAt.current,
+      meta: { kind: 'catalog', step: stepName },
+    })
+    stepAt.current = Date.now()
+  }
+
+  function goClient() {
+    if (step === 'goods') leaveStep('goods')
+    setStep('client')
+  }
+
+  function goGoods() {
+    if (step === 'client') leaveStep('client')
+    setStep('goods')
+  }
 
   const visible = useMemo(() => {
     const term = productQ.trim().toLowerCase()
@@ -68,6 +90,9 @@ export default function NewOrderSheet() {
   }
 
   useEffect(() => {
+    track('order_open', {
+      meta: { kind: 'catalog', note: initial.step === 'client' ? 'resume' : 'new' },
+    })
     loadProducts().catch((err: Error) => toast(err.message, 'err'))
     loadCategories().catch((err: Error) => toast(err.message, 'err'))
     loadClients().catch((err: Error) => toast(err.message, 'err'))
@@ -90,7 +115,8 @@ export default function NewOrderSheet() {
       phone,
       lens: '',
       frame: '',
-      amount: '',
+      amount,
+      paid: '',
       blocks: [],
     })
   }
@@ -98,7 +124,7 @@ export default function NewOrderSheet() {
   useEffect(() => {
     if (skipPersist.current) return
     persistDraft()
-  }, [draftId, cart, note, opened, step, creatingClient, clientId, fullName, phone, products])
+  }, [draftId, cart, note, amount, opened, step, creatingClient, clientId, fullName, phone, products])
 
   function bump(id: string, delta: number) {
     setCart((prev) => {
@@ -113,20 +139,30 @@ export default function NewOrderSheet() {
   async function submit(e: FormEvent) {
     e.preventDefault()
     if (count === 0 && !note.trim()) {
+      track('error', { meta: { kind: 'catalog', reason: 'empty' } })
       toast('Ткните товары или напишите, что заказать', 'err')
       return
     }
     if (creatingClient) {
       if (personName(fullName).length < 2) {
+        track('error', { meta: { kind: 'catalog', reason: 'name' } })
         toast('Укажите ФИО', 'err')
         return
       }
       if (!isPhoneValid(phone)) {
+        track('error', { meta: { kind: 'catalog', reason: 'phone' } })
         toast('Проверьте номер телефона', 'err')
         return
       }
     } else if (!clientId) {
+      track('error', { meta: { kind: 'catalog', reason: 'client' } })
       toast('Выберите клиента или добавьте нового', 'err')
+      return
+    }
+    const parsed = parseAmount(amount)
+    if (parsed == null || parsed < 1) {
+      track('error', { meta: { kind: 'catalog', reason: 'amount' } })
+      toast('Укажите сумму заказа', 'err')
       return
     }
     setPending(true)
@@ -136,11 +172,22 @@ export default function NewOrderSheet() {
         qty,
       }))
       const body = creatingClient
-        ? { kind: 'catalog', items, note: note.trim() || undefined, client: { fullName: personName(fullName), phone } }
-        : { kind: 'catalog', items, note: note.trim() || undefined, clientId }
+        ? { kind: 'catalog', items, note: note.trim() || undefined, amount: parsed, client: { fullName: personName(fullName), phone } }
+        : { kind: 'catalog', items, note: note.trim() || undefined, amount: parsed, clientId }
       await api('/orders', {
         method: 'POST',
         body: JSON.stringify(body),
+      })
+      if (step === 'client') leaveStep('client')
+      else leaveStep('goods')
+      track('order_submit', {
+        ms: Date.now() - openedAt.current,
+        meta: {
+          kind: 'catalog',
+          newClient: creatingClient,
+          items: count,
+          note: !!note.trim(),
+        },
       })
       toast('Заказ создан')
       skipPersist.current = true
@@ -393,6 +440,17 @@ export default function NewOrderSheet() {
           loadClients().catch(() => {})
         }}
       />
+      <label className="block">
+        <span className="mb-1 block text-sm text-muted">Итог</span>
+        <input
+          value={formatAmountInput(amount)}
+          onChange={(e) => setAmount(formatAmountInput(e.target.value))}
+          inputMode="numeric"
+          enterKeyHint="done"
+          placeholder="сумма"
+          className="w-full rounded-xl border border-line px-3 py-2.5 outline-none"
+        />
+      </label>
     </div>
   )
 
@@ -407,9 +465,14 @@ export default function NewOrderSheet() {
               persistDraft()
               if (!holdCurrent()) {
                 skipPersist.current = false
+                track('error', { meta: { kind: 'catalog', reason: 'empty' } })
                 toast('Сначала добавьте товар', 'err')
                 return
               }
+              track('order_hold', {
+                ms: Date.now() - openedAt.current,
+                meta: { kind: 'catalog' },
+              })
               toast('Заказ отложен — он на экране заказов')
               navigate('/')
             }}
@@ -423,6 +486,10 @@ export default function NewOrderSheet() {
               skipPersist.current = true
               persistDraft()
               holdCurrent()
+              track('order_close', {
+                ms: Date.now() - openedAt.current,
+                meta: { kind: 'catalog' },
+              })
               navigate('/')
             }}
             className="flex h-10 w-10 items-center justify-center rounded-full text-lg text-muted hover:bg-paper hover:text-ink"
@@ -463,7 +530,7 @@ export default function NewOrderSheet() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setStep('client')}
+                      onClick={() => goClient()}
                       className="w-2/3 rounded-xl bg-ink py-3.5 text-sm font-medium text-white"
                     >
                       Далее{count ? ` · ${count}` : ''}
@@ -472,7 +539,7 @@ export default function NewOrderSheet() {
                 ) : (
                   <button
                     type="button"
-                    onClick={() => setStep('client')}
+                    onClick={() => goClient()}
                     className="w-full rounded-xl bg-ink py-3.5 text-sm font-medium text-white"
                   >
                     Далее{count ? ` · ${count}` : ''}
@@ -482,7 +549,7 @@ export default function NewOrderSheet() {
                 <>
                   <button
                     type="button"
-                    onClick={() => setStep('goods')}
+                    onClick={() => goGoods()}
                     className="w-1/3 rounded-xl border border-line py-3.5 text-sm"
                   >
                     Назад

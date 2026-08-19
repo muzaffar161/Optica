@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { PlanService, SmsPackageAdminService } from './plan.service';
 import { SubscriptionService } from './subscription.service';
 import { SmsWalletService } from './sms-wallet.service';
+import { PlatformSmsService } from './platform-sms.service';
 import { PaymentService } from './payment.service';
 import { PaymentNumberService } from './payment-number.service';
 import { PaymentSettingsService } from './payment-settings.service';
@@ -20,6 +21,7 @@ import { PAYMENT_PROVIDER } from './providers/payment-provider.interface';
     SmsPackageAdminService,
     SubscriptionService,
     SmsWalletService,
+    PlatformSmsService,
     PaymentNumberService,
     PaymentSettingsService,
     PaymentService,
@@ -29,6 +31,6 @@ import { PAYMENT_PROVIDER } from './providers/payment-provider.interface';
     ManualPaymentProvider,
     { provide: PAYMENT_PROVIDER, useExisting: ManualPaymentProvider },
   ],
-  exports: [SubscriptionService, SmsWalletService, PlanService, PaymentService],
+  exports: [SubscriptionService, SmsWalletService, PlatformSmsService, PlanService, PaymentService],
 })
 export class BillingModule {}

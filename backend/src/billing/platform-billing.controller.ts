@@ -35,17 +35,10 @@ import {
 import { OrgNetworkService } from './org-network.service';
 import { CreateOpticsDto } from '../platform/dto/create-optics.dto';
 import type { UploadedImage } from '../uploads/upload';
+import { IMAGE_UPLOAD } from '../uploads/upload';
+import { RateLimit } from '../common/rate-limit.decorator';
 
-const qrUpload = FileInterceptor('qr', {
-  limits: { fileSize: 5 * 1024 * 1024 },
-  fileFilter: (_req, file, cb) => {
-    if (!file.mimetype.startsWith('image/')) {
-      cb(new BadRequestException('Нужно изображение QR (jpg, png, webp)'), false);
-      return;
-    }
-    cb(null, true);
-  },
-});
+const qrUpload = FileInterceptor('qr', IMAGE_UPLOAD);
 
 @Roles(Role.platform)
 @Controller('platform')
@@ -200,6 +193,7 @@ export class PlatformBillingController {
   }
 
   @Post('payment-settings/qr')
+  @RateLimit({ name: 'upload', limit: 20, windowMs: 10 * 60_000, by: 'user' })
   @UseInterceptors(qrUpload)
   uploadQr(@UploadedFile() file?: UploadedImage) {
     if (!file) throw new BadRequestException('Загрузите изображение QR');

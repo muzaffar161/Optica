@@ -53,14 +53,19 @@ export class OrgNetworkService {
             orgOwner,
           },
         });
+        const tpl = await tx.messageTemplate.findFirst({
+          orderBy: { createdAt: 'asc' },
+        });
         await tx.settings.create({
           data: {
             opticsId: optics.id,
             opticsName: dto.name.trim(),
             address: 'укажите адрес в настройках',
             landmark: 'укажите ориентир в настройках',
-            template: config.defaultTemplate || DEFAULT_TEMPLATE,
-            templateKey: config.defaultTemplateKey,
+            template: tpl?.bodyRu || config.defaultTemplate || DEFAULT_TEMPLATE,
+            templateKey: tpl?.id || config.defaultTemplateKey,
+            templateId: tpl?.id,
+            messageLang: 'ru',
           },
         });
         return tx.optics.findUniqueOrThrow({

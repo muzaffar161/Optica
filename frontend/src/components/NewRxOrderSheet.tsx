@@ -20,6 +20,7 @@ import {
   type RxEye,
 } from '../orderDraft'
 import { formatSum, type Client, type Page } from '../types'
+import { track } from '../usage'
 
 const LABELS = ['Очки для дали', 'Очки для чтения', 'Компьютерные', 'Другое']
 
@@ -252,6 +253,27 @@ export default function NewRxOrderSheet() {
     initial.step === 'client' ? 'client' : 'goods',
   )
   const skipPersist = useRef(false)
+  const openedAt = useRef(Date.now())
+  const stepAt = useRef(Date.now())
+  const chipUsed = useRef(false)
+
+  function leaveStep(stepName: 'goods' | 'client') {
+    track('order_step', {
+      ms: Date.now() - stepAt.current,
+      meta: { kind: 'rx', step: stepName },
+    })
+    stepAt.current = Date.now()
+  }
+
+  function goClient() {
+    if (step === 'goods') leaveStep('goods')
+    setStep('client')
+  }
+
+  function goGoods() {
+    if (step === 'client') leaveStep('client')
+    setStep('goods')
+  }
 
   async function loadClients(query = '') {
     const params = new URLSearchParams()
@@ -263,6 +285,9 @@ export default function NewRxOrderSheet() {
   }
 
   useEffect(() => {
+    track('order_open', {
+      meta: { kind: 'rx', note: initial.step === 'client' ? 'resume' : 'new' },
+    })
     loadClients().catch((err: Error) => toast(err.message, 'err'))
     api<{ lenses: string[]; frames: string[] }>('/orders/rx-suggestions')
       .then((data) => {
@@ -308,12 +333,18 @@ export default function NewRxOrderSheet() {
   async function submit(e: FormEvent) {
     e.preventDefault()
     if (step !== 'client') {
-      setStep('client')
+      goClient()
       return
     }
     const parsed = parseAmount(amount)
     const paidParsed = parseAmount(paid) ?? 0
-    if (parsed != null && paidParsed > parsed) {
+    if (parsed == null || parsed < 1) {
+      track('error', { meta: { kind: 'rx', reason: 'amount' } })
+      toast('Укажите сумму заказа', 'err')
+      return
+    }
+    if (paidParsed > parsed) {
+      track('error', { meta: { kind: 'rx', reason: 'deposit' } })
       toast('Залог не может быть больше итога', 'err')
       return
     }
@@ -328,19 +359,23 @@ export default function NewRxOrderSheet() {
         block.os.ax.trim(),
     )
     if (!filled && !lens.trim() && !frame.trim()) {
+      track('error', { meta: { kind: 'rx', reason: 'empty' } })
       toast('Заполните рецепт, линзу или оправу', 'err')
       return
     }
     if (creatingClient) {
       if (personName(fullName).length < 2) {
+        track('error', { meta: { kind: 'rx', reason: 'name' } })
         toast('Укажите ФИО', 'err')
         return
       }
       if (!isPhoneValid(phone)) {
+        track('error', { meta: { kind: 'rx', reason: 'phone' } })
         toast('Проверьте номер телефона', 'err')
         return
       }
     } else if (!clientId) {
+      track('error', { meta: { kind: 'rx', reason: 'client' } })
       toast('Выберите клиента или добавьте нового', 'err')
       return
     }
@@ -376,6 +411,19 @@ export default function NewRxOrderSheet() {
         method: 'POST',
         body: JSON.stringify(body),
       })
+      leaveStep('client')
+      track('order_submit', {
+        ms: Date.now() - openedAt.current,
+        meta: {
+          kind: 'rx',
+          newClient: creatingClient,
+          deposit: paidParsed > 0,
+          chip: chipUsed.current,
+          blocks: blocks.length,
+          lens: !!lens.trim(),
+          frame: !!frame.trim(),
+        },
+      })
       if (lens.trim()) rememberRecent('lens', lens.trim())
       if (frame.trim()) rememberRecent('frame', frame.trim())
       toast('Заказ создан')
@@ -400,9 +448,14 @@ export default function NewRxOrderSheet() {
             persistDraft()
             if (!holdCurrent()) {
               skipPersist.current = false
+              track('error', { meta: { kind: 'rx', reason: 'empty' } })
               toast('Сначала заполните рецепт', 'err')
               return
             }
+            track('order_hold', {
+              ms: Date.now() - openedAt.current,
+              meta: { kind: 'rx' },
+            })
             toast('Заказ отложен — он на экране заказов')
             navigate('/')
           }}
@@ -416,6 +469,10 @@ export default function NewRxOrderSheet() {
             skipPersist.current = true
             persistDraft()
             holdCurrent()
+            track('order_close', {
+              ms: Date.now() - openedAt.current,
+              meta: { kind: 'rx' },
+            })
             navigate('/')
           }}
           className="flex h-10 w-10 items-center justify-center rounded-full text-lg text-muted hover:bg-paper hover:text-ink"
@@ -549,7 +606,14 @@ export default function NewRxOrderSheet() {
                     className="w-full rounded-xl border border-line px-3 py-2.5 outline-none"
                   />
                 </label>
-                <RecentChips items={lensRecent} current={lens} onPick={setLens} />
+                <RecentChips
+                  items={lensRecent}
+                  current={lens}
+                  onPick={(value) => {
+                    chipUsed.current = true
+                    setLens(value)
+                  }}
+                />
               </div>
               <div>
                 <label className="block">
@@ -561,7 +625,14 @@ export default function NewRxOrderSheet() {
                     className="w-full rounded-xl border border-line px-3 py-2.5 outline-none"
                   />
                 </label>
-                <RecentChips items={frameRecent} current={frame} onPick={setFrame} />
+                <RecentChips
+                  items={frameRecent}
+                  current={frame}
+                  onPick={(value) => {
+                    chipUsed.current = true
+                    setFrame(value)
+                  }}
+                />
               </div>
             </div>
               </>
@@ -610,7 +681,7 @@ export default function NewRxOrderSheet() {
                   onChange={(e) => setAmount(formatAmountInput(e.target.value))}
                   inputMode="numeric"
                   enterKeyHint={showDeposit ? 'next' : 'done'}
-                  placeholder="0"
+                  placeholder="сумма"
                   className="w-full rounded-xl border border-line px-3 py-2.5 outline-none"
                 />
               </label>
@@ -665,7 +736,7 @@ export default function NewRxOrderSheet() {
           {step === 'goods' ? (
             <button
               type="button"
-              onClick={() => setStep('client')}
+              onClick={() => goClient()}
               className="w-full rounded-xl bg-ink py-3.5 text-sm font-medium text-white"
             >
               Далее
@@ -675,7 +746,7 @@ export default function NewRxOrderSheet() {
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => setStep('goods')}
+                  onClick={() => goGoods()}
                   className="w-1/3 rounded-xl border border-line py-3.5 text-sm"
                 >
                   Назад

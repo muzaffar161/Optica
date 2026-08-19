@@ -1,8 +1,9 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { api } from '../api'
 import { useToast } from '../Toast'
-import { MESSAGE_TEMPLATES, renderTemplate, SAMPLE_VARS } from '../template'
+import type { CatalogTemplate } from '../components/TemplatePicker'
 import type { Settings } from '../types'
+import { SAMPLE_VARS } from '../template'
 import { useAuth } from '../AuthContext'
 import { canEdit } from '../access'
 import PhoneInput from '../components/PhoneInput'
@@ -73,13 +74,17 @@ export default function SettingsPage() {
   const { user, patchUser } = useAuth()
   const writable = canEdit(user, 'settings')
   const [form, setForm] = useState<Settings | null>(null)
+  const [templates, setTemplates] = useState<CatalogTemplate[]>([])
   const [pending, setPending] = useState(false)
   const [reminding, setReminding] = useState(false)
   const [section, setSection] = useState<SectionId | null>(null)
 
   useEffect(() => {
-    api<Settings>('/settings')
-      .then(setForm)
+    Promise.all([api<Settings>('/settings'), api<CatalogTemplate[]>('/settings/templates')])
+      .then(([s, list]) => {
+        setTemplates(list)
+        setForm(s.templateId ? s : { ...s, templateId: list[0]?.id ?? s.templateId })
+      })
       .catch((err: Error) => toast(err.message, 'err'))
   }, [])
 
@@ -97,7 +102,8 @@ export default function SettingsPage() {
           hours: form.hours ?? '',
           theme: form.theme || 'atelier',
           archiveAfterDays: form.archiveAfterDays ?? 10,
-          templateKey: form.templateCustom ? form.templateKey : 'platform',
+          templateId: form.templateId,
+          messageLang: form.messageLang || 'ru',
           checkupRemindEnabled: form.checkupRemindEnabled !== false,
           checkupIntervalMonths: form.checkupIntervalMonths ?? 6,
           checkupNotifyDay: form.checkupNotifyDay ?? 1,
@@ -155,18 +161,10 @@ export default function SettingsPage() {
   }
 
   const themeName = THEMES.find((item) => item.key === (form.theme || 'atelier'))?.name
-  const templateName =
-    form.templateCustom === false
-      ? 'как у платформы'
-      : MESSAGE_TEMPLATES.find((item) => item.key === form.templateKey)?.name || 'своё'
-  const preview = renderTemplate(form.template, {
-    ...SAMPLE_VARS,
-    opticsName: form.opticsName || SAMPLE_VARS.opticsName,
-    address: form.address || SAMPLE_VARS.address,
-    landmark: form.landmark || SAMPLE_VARS.landmark,
-    hours: form.hours || SAMPLE_VARS.hours,
-    phone: form.phone || SAMPLE_VARS.phone,
-  })
+  const lang = form.messageLang || 'ru'
+  const currentTpl = templates.find((row) => row.id === form.templateId) || templates[0]
+  const templateName = currentTpl?.name || 'сообщение'
+  const langLabel = lang === 'both' ? 'RU + UZ' : lang === 'uz' ? 'o‘zbek' : 'русский'
 
   const titles: Record<SectionId, string> = {
     salon: 'Салон',
@@ -374,26 +372,36 @@ export default function SettingsPage() {
           {section === 'message' && (
             <section className="space-y-3 rounded-2xl border border-line bg-card p-5">
               <p className="text-sm text-muted">
-                Короткий SMS-текст или карточка с линзой, оправой и адресом.
+                Русский, узбекский или оба. Telegram — полный текст бесплатно. SMS — короткая
+                версия: оба языка = 2 SMS, лимит {form.smsCharLimit ?? 70} символов.
               </p>
               {writable ? (
                 <>
-                  {form.templateCustom && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setForm({ ...form, templateCustom: false, templateKey: 'platform' })
-                      }
-                      className="text-sm text-muted hover:text-ink hover:underline"
-                    >
-                      Вернуть шаблон главной админки
-                    </button>
-                  )}
+                  <div className="flex flex-wrap gap-2">
+                    {(
+                      [
+                        ['ru', 'Русский'],
+                        ['uz', 'O‘zbek'],
+                        ['both', 'Оба'],
+                      ] as const
+                    ).map(([key, label]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setForm({ ...form, messageLang: key })}
+                        className={`rounded-full px-3 py-1.5 text-sm ${
+                          lang === key ? 'bg-ink text-white' : 'border border-line text-muted'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
                   <TemplatePicker
-                    value={form.template}
-                    selectedKey={
-                      form.templateCustom === false ? undefined : form.templateKey
-                    }
+                    items={templates}
+                    selectedId={form.templateId || currentTpl?.id}
+                    lang={lang}
+                    smsLimit={form.smsCharLimit}
                     previewVars={{
                       opticsName: form.opticsName,
                       address: form.address,
@@ -401,20 +409,21 @@ export default function SettingsPage() {
                       hours: form.hours || SAMPLE_VARS.hours,
                       phone: form.phone || SAMPLE_VARS.phone,
                     }}
-                    onSelect={(key, body) =>
+                    onSelect={(item) =>
                       setForm({
                         ...form,
-                        templateKey: key,
-                        template: body,
+                        templateId: item.id,
+                        templateKey: item.id,
+                        template: item.bodyRu,
                         templateCustom: true,
                       })
                     }
                   />
                 </>
               ) : (
-                <pre className="whitespace-pre-wrap rounded-xl bg-paper px-3 py-2.5 font-sans text-sm text-muted">
-                  {preview}
-                </pre>
+                <p className="text-sm text-muted">
+                  {templateName} · {langLabel}
+                </p>
               )}
             </section>
           )}
@@ -514,7 +523,7 @@ export default function SettingsPage() {
         />
         <Row
           title="Сообщение"
-          value={templateName}
+          value={`${templateName} · ${langLabel}`}
           onClick={() => setSection('message')}
           icon={
             <Icon className="bg-muted">

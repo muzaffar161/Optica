@@ -198,6 +198,9 @@ export class OrdersService {
     if (!clientId) {
       throw new BadRequestException('Укажите клиента или создайте нового');
     }
+    if (typeof dto.amount !== 'number' || dto.amount < 1) {
+      throw new BadRequestException('Укажите сумму заказа');
+    }
     await this.clients.findOne(opticsId, clientId);
 
     if (kind === OrderKind.rx) {

@@ -1,42 +1,47 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateSettingsDto } from './dto/update-settings.dto';
 import {
   DEFAULT_TEMPLATE,
-  findTemplatePreset,
-  MESSAGE_TEMPLATES,
+  SEED_TEMPLATES,
 } from '../common/template';
+import { MessageTemplatesService } from './message-templates.service';
+import { PlatformSmsService } from '../billing/platform-sms.service';
 import { clampArchiveDays } from '../common/archive';
 import { THEME_KEYS } from '../common/themes';
 
 @Injectable()
 export class SettingsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly catalog: MessageTemplatesService,
+    private readonly platformSms: PlatformSmsService,
+  ) {}
 
   async defaultTemplate() {
-    const config = await this.prisma.platformConfig.upsert({
-      where: { id: 'default' },
-      create: { id: 'default', defaultTemplate: DEFAULT_TEMPLATE },
-      update: {},
-    });
+    const row = await this.catalog.defaultRow();
     return {
-      template: config.defaultTemplate,
-      templateKey: config.defaultTemplateKey,
+      template: row?.bodyRu || DEFAULT_TEMPLATE,
+      templateKey: row?.id || 'tpl_compact',
+      templateId: row?.id || null,
     };
   }
 
   async get(opticsId: string) {
+    await this.catalog.ensureSeed();
     const existing = await this.prisma.settings.findUnique({
       where: { opticsId },
     });
+    const smsCharLimit = await this.platformSms.charLimit();
     if (existing) {
-      return existing;
+      return { ...existing, smsCharLimit };
     }
     const optics = await this.prisma.optics.findUnique({
       where: { id: opticsId },
     });
     const defaults = await this.defaultTemplate();
-    return this.prisma.settings.create({
+    const created = await this.prisma.settings.create({
       data: {
         opticsId,
         opticsName: optics?.name || 'Оптика',
@@ -44,13 +49,16 @@ export class SettingsService {
         landmark: 'укажите ориентир в настройках',
         template: defaults.template,
         templateKey: defaults.templateKey,
+        templateId: defaults.templateId,
+        messageLang: 'ru',
       },
     });
+    return { ...created, smsCharLimit };
   }
 
   async update(opticsId: string, dto: UpdateSettingsDto) {
     await this.get(opticsId);
-    const data: Record<string, string | number | boolean> = {};
+    const data: Prisma.SettingsUncheckedUpdateInput = {};
     if (dto.address) data.address = dto.address.trim();
     if (dto.landmark) data.landmark = dto.landmark.trim();
     if (dto.phone != null) data.phone = dto.phone.trim();
@@ -64,22 +72,38 @@ export class SettingsService {
     if (typeof dto.archiveAfterDays === 'number') {
       data.archiveAfterDays = clampArchiveDays(dto.archiveAfterDays);
     }
-    if (dto.templateKey) {
+    if (dto.templateId) {
+      const preset = await this.prisma.messageTemplate.findUnique({
+        where: { id: dto.templateId },
+      });
+      if (!preset) throw new BadRequestException('Неизвестный шаблон');
+      data.templateId = preset.id;
+      data.template = preset.bodyRu;
+      data.templateKey = preset.id;
+      data.templateCustom = true;
+    } else if (dto.templateKey) {
       if (dto.templateKey === 'platform') {
         const defaults = await this.defaultTemplate();
         data.template = defaults.template;
         data.templateKey = defaults.templateKey;
+        data.templateId = defaults.templateId;
         data.templateCustom = false;
       } else {
-        const preset = findTemplatePreset(dto.templateKey);
-        if (!preset) {
-          throw new BadRequestException('Неизвестный шаблон');
-        }
-        data.template = preset.body;
-        data.templateKey = preset.key;
+        const fromSeed = SEED_TEMPLATES.find((row) => row.id === dto.templateKey || row.id === `tpl_${dto.templateKey}`);
+        const preset = await this.prisma.messageTemplate.findUnique({
+          where: { id: dto.templateKey },
+        });
+        const row = preset || (fromSeed
+          ? await this.prisma.messageTemplate.findUnique({ where: { id: fromSeed.id } })
+          : null);
+        if (!row) throw new BadRequestException('Неизвестный шаблон');
+        data.template = row.bodyRu;
+        data.templateKey = row.id;
+        data.templateId = row.id;
         data.templateCustom = true;
       }
     }
+    if (dto.messageLang) data.messageLang = dto.messageLang;
     if (typeof dto.checkupRemindEnabled === 'boolean') {
       data.checkupRemindEnabled = dto.checkupRemindEnabled;
     }
@@ -89,13 +113,14 @@ export class SettingsService {
     if (typeof dto.checkupNotifyDay === 'number') {
       data.checkupNotifyDay = dto.checkupNotifyDay;
     }
-    return this.prisma.settings.update({
+    const row = await this.prisma.settings.update({
       where: { opticsId },
       data,
     });
+    return { ...row, smsCharLimit: await this.platformSms.charLimit() };
   }
 
-  templates() {
-    return MESSAGE_TEMPLATES;
+  listTemplates() {
+    return this.catalog.list();
   }
 }

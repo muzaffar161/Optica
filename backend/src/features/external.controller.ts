@@ -2,9 +2,11 @@ import { Controller, Get, Req, UseGuards } from '@nestjs/common';
 import { Public } from '../common/decorators/public.decorator';
 import { ApiKeyGuard } from './api-key.guard';
 import { ApiKeyService } from './api-key.service';
+import { RateLimit } from '../common/rate-limit.decorator';
 
 @Public()
 @UseGuards(ApiKeyGuard)
+@RateLimit({ name: 'api-key', limit: 60, windowMs: 60_000, by: 'apiKey' })
 @Controller('v1')
 export class ExternalApiController {
   constructor(private readonly keys: ApiKeyService) {}

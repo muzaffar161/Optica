@@ -6,12 +6,21 @@ import { ExportService } from './export.service';
 import { ApiKeyService } from './api-key.service';
 import { FeaturesController } from './features.controller';
 import { ExternalApiController } from './external.controller';
+import { UsageController } from './usage.controller';
 import { ApiKeyGuard } from './api-key.guard';
+import { UsageService } from './usage.service';
 
 @Module({
   imports: [BillingModule],
-  controllers: [FeaturesController, ExternalApiController],
-  providers: [AuditService, ReportsService, ExportService, ApiKeyService, ApiKeyGuard],
-  exports: [AuditService],
+  controllers: [FeaturesController, ExternalApiController, UsageController],
+  providers: [
+    AuditService,
+    ReportsService,
+    ExportService,
+    ApiKeyService,
+    ApiKeyGuard,
+    UsageService,
+  ],
+  exports: [AuditService, UsageService],
 })
 export class FeaturesModule {}

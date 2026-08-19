@@ -2,7 +2,7 @@
 
 Два уровня доступа:
 
-- **Платформа** (`admin` из `.env`) — салоны, статистика, сброс паролей, счётчики SMS
+- **Платформа** (`ADMIN_USERNAME` из `.env`) — салоны, статистика, сброс паролей, счётчики SMS
 - **Салон** — заказы, клиенты, уведомления только своей оптики
 
 ## Запуск
@@ -14,7 +14,7 @@ npm run dev:frontend
 ```
 
 Админка салона: http://localhost:5173/login  
-Платформа (ваш админ): http://localhost:5173/platform/login — **admin** / **admin123**
+Платформа: http://localhost:5173/platform/login — логин и пароль из `ADMIN_USERNAME` / `ADMIN_PASSWORD` в `backend/.env`. На сервере не оставляйте значения по умолчанию.
 
 ## Telegram
 

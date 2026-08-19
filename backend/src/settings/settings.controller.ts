@@ -8,6 +8,7 @@ import type { AuthUser } from '../common/auth-user';
 import { opticsIdOf } from '../common/optics-scope';
 import { Access } from '../common/decorators/access.decorator';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { RateLimit } from '../common/rate-limit.decorator';
 
 @Roles(Role.optics)
 @Controller('settings')
@@ -21,6 +22,12 @@ export class SettingsController {
   @Access('settings', 'view')
   get(@CurrentUser() user: AuthUser) {
     return this.settingsService.get(opticsIdOf(user));
+  }
+
+  @Get('templates')
+  @Access('settings', 'view')
+  templates() {
+    return this.settingsService.listTemplates();
   }
 
   @Patch()
@@ -49,6 +56,7 @@ export class SettingsController {
 
   @Post('checkup-remind')
   @Access('settings', 'edit')
+  @RateLimit({ name: 'checkup', limit: 1, windowMs: 5 * 60_000, by: 'optics' })
   async remindNow(@CurrentUser() user: AuthUser) {
     const results = await this.events.emitAsync('checkup.remind', {
       opticsId: opticsIdOf(user),

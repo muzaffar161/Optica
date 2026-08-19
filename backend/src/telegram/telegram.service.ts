@@ -57,6 +57,7 @@ const WARN_MS = 8000;
 export class TelegramService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(TelegramService.name);
   private bot?: Bot;
+  private username = '';
   private readonly lastHit = new Map<string, number>();
   private readonly lastWarn = new Map<string, number>();
 
@@ -79,6 +80,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     this.setupHandlers();
     void this.bot.start({
       onStart: (info) => {
+        this.username = info.username || '';
         this.logger.log(`Telegram-бот @${info.username} запущен`);
       },
     });
@@ -88,6 +90,11 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     if (this.bot) {
       await this.bot.stop();
     }
+  }
+
+  botLink() {
+    if (this.username) return `https://t.me/${this.username}`;
+    return '';
   }
 
   async sendMessage(chatId: string, text: string): Promise<TelegramSendResult> {

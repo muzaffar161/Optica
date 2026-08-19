@@ -17,17 +17,19 @@ export default function PlatformLayout() {
         <div>
           <div className="font-display text-xl leading-none lowercase">optika</div>
           <div className="mt-1 text-[11px] uppercase tracking-[0.18em] text-brass">
-            admin
+            платформа
           </div>
         </div>
       </div>
       <nav className="flex flex-1 flex-col gap-1 px-3">
         {[
           { to: '/platform', label: 'Салоны', end: true },
+          { to: '/platform/templates', label: 'Шаблоны' },
           { to: '/platform/organizations', label: 'Подписки' },
           { to: '/platform/payments', label: 'Платежи' },
           { to: '/platform/plans', label: 'Тарифы' },
           { to: '/platform/sms-packages', label: 'SMS-пакеты' },
+          { to: '/platform/usage', label: 'Тест' },
         ].map((item) => (
           <NavLink
             key={item.to}
@@ -95,7 +97,14 @@ export default function PlatformLayout() {
               />
             </svg>
           </button>
-          <div className="font-display text-lg lowercase">optika admin</div>
+          <div className="min-w-0 flex-1 font-display text-lg lowercase">optika admin</div>
+          <button
+            type="button"
+            onClick={logout}
+            className="text-sm text-muted hover:text-ink"
+          >
+            Выйти
+          </button>
         </header>
         <main className="min-w-0 flex-1 p-4 md:p-8">
           <Outlet />

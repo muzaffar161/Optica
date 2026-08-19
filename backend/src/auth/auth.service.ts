@@ -6,6 +6,8 @@ import { ownerAccess } from '../common/access';
 import { featuresOf } from '../common/plan-features';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 
+const DUMMY_HASH = bcrypt.hashSync('optika-timing-dummy', 10);
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -15,22 +17,20 @@ export class AuthService {
   ) {}
 
   async login(username: string, password: string) {
+    const login = username.trim().toLowerCase();
     const user = await this.prisma.user.findUnique({
-      where: { username },
+      where: { username: login },
       include: { optics: true },
     });
-    if (!user) {
+    const ok = await bcrypt.compare(password, user?.passwordHash ?? DUMMY_HASH);
+    if (!user || !ok) {
       throw new UnauthorizedException('Неверный логин или пароль');
     }
-    const ok = await bcrypt.compare(password, user.passwordHash);
-    if (!ok) {
-      throw new UnauthorizedException('Неверный логин или пароль');
+    if (!user.active) {
+      throw new UnauthorizedException('Доступ отключён.');
     }
     if (user.role === 'optics' && (!user.optics || !user.optics.active)) {
       throw new UnauthorizedException('Салон отключён. Обратитесь в поддержку.');
-    }
-    if (user.role === 'optics' && !user.active) {
-      throw new UnauthorizedException('Доступ отключён. Обратитесь к владельцу салона.');
     }
     const accessToken = await this.jwt.signAsync({
       sub: user.id,

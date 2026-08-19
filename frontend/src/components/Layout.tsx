@@ -130,7 +130,14 @@ export default function Layout() {
                 />
               </svg>
             </button>
-            <div className="font-display text-lg leading-none lowercase">optika</div>
+            <div className="min-w-0 flex-1 font-display text-lg leading-none lowercase">optika</div>
+            <button
+              type="button"
+              onClick={logout}
+              className="text-sm text-muted hover:text-ink"
+            >
+              Выйти
+            </button>
           </header>
         )}
         <main

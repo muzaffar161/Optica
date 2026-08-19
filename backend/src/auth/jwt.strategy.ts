@@ -5,6 +5,7 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import type { AuthUser } from '../common/auth-user';
 import { ownerAccess } from '../common/access';
+import { jwtSecret } from '../common/jwt-secret';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -15,7 +16,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: config.get<string>('JWT_SECRET', 'optika-dev-jwt-secret'),
+      secretOrKey: jwtSecret(config),
     });
   }
 
@@ -24,14 +25,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       where: { id: payload.sub },
       include: { optics: true },
     });
-    if (!user) {
+    if (!user || !user.active) {
       throw new UnauthorizedException();
     }
     if (user.role === 'optics' && (!user.opticsId || !user.optics?.active)) {
       throw new UnauthorizedException('Салон отключён');
-    }
-    if (user.role === 'optics' && !user.active) {
-      throw new UnauthorizedException('Доступ отключён');
     }
     return {
       sub: user.id,

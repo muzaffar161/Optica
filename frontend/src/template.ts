@@ -1,6 +1,6 @@
 export const TEMPLATE_VARS = [
-  { key: 'firstName', label: 'Имя', sample: 'Farxod' },
-  { key: 'fullName', label: 'ФИО', sample: 'Farxod Karimov' },
+  { key: 'firstName', label: 'Имя', sample: 'Александр' },
+  { key: 'fullName', label: 'ФИО', sample: 'Александр Петров' },
   { key: 'orderTitle', label: 'Заказ', sample: 'Очки для дали: OD Sph +1,25 Cyl -0,50' },
   { key: 'rx', label: 'Рецепт', sample: 'OD Sph +1,25 Cyl -0,50 ax 180' },
   { key: 'lens', label: 'Линза', sample: 'Essilor 1.6 AS' },
@@ -13,6 +13,7 @@ export const TEMPLATE_VARS = [
   { key: 'landmark', label: 'Ориентир', sample: 'рядом с "Korzinka"' },
   { key: 'hours', label: 'Часы', sample: '9:00–20:00' },
   { key: 'phone', label: 'Телефон салона', sample: '+998 90 123 45 67' },
+  { key: 'link', label: 'Ссылка на бота', sample: 'https://t.me/myoptika_bot' },
 ] as const
 
 export const SAMPLE_VARS: Record<string, string> = Object.fromEntries(
@@ -135,3 +136,44 @@ export function insertAtCursor(
     caret: start + insert.length,
   }
 }
+
+export const DEFAULT_SMS_CHAR_LIMIT = 70
+export const MIN_SMS_CHAR_LIMIT = 40
+export const MAX_SMS_CHAR_LIMIT = 280
+
+export function clampSmsCharLimit(value?: number | null) {
+  const n = Math.round(Number(value))
+  if (!Number.isFinite(n)) return DEFAULT_SMS_CHAR_LIMIT
+  return Math.min(MAX_SMS_CHAR_LIMIT, Math.max(MIN_SMS_CHAR_LIMIT, n))
+}
+
+export function smsMeta(text: string, limit = DEFAULT_SMS_CHAR_LIMIT) {
+  const chars = [...text].length
+  const cap = clampSmsCharLimit(limit)
+  const parts = chars === 0 ? 0 : chars <= cap ? 1 : Math.ceil(chars / cap)
+  return {
+    chars,
+    parts,
+    gsm: false,
+    limit: cap,
+    remaining: cap - chars,
+    over: chars > cap,
+    label: 'кириллица',
+  }
+}
+
+export function fitSms(text: string, max = DEFAULT_SMS_CHAR_LIMIT, keepSuffix = '') {
+  const trimmed = text.trim()
+  if (!trimmed) return ''
+  const suffix = keepSuffix && trimmed.endsWith(keepSuffix) ? keepSuffix : ''
+  const head = suffix ? trimmed.slice(0, trimmed.length - suffix.length).trimEnd() : trimmed
+  const budget = suffix ? Math.max(0, max - [...suffix].length - (head ? 1 : 0)) : max
+  if ([...head].length <= budget) {
+    return suffix ? (head ? `${head} ${suffix}` : suffix) : head
+  }
+  const cut = [...head].slice(0, Math.max(0, budget - 1)).join('').trimEnd()
+  const short = cut ? `${cut}…` : ''
+  return suffix ? (short ? `${short} ${suffix}` : suffix) : short
+}
+
+

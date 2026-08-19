@@ -122,9 +122,12 @@ export type Settings = {
   template: string
   templateKey?: string
   templateCustom?: boolean
+  templateId?: string | null
+  messageLang?: 'ru' | 'uz' | 'both'
   checkupRemindEnabled?: boolean
   checkupIntervalMonths?: number
   checkupNotifyDay?: number
+  smsCharLimit?: number
 }
 
 export const STATUS_LABEL: Record<OrderStatus, string> = {

@@ -61,21 +61,63 @@ const PACKAGES = [
   { name: 'Business', smsCount: 5000, price: 750000 },
 ];
 
-async function main() {
-  const username = process.env.ADMIN_USERNAME || 'admin';
-  const password = process.env.ADMIN_PASSWORD || 'admin123';
-  const passwordHash = await bcrypt.hash(password, 10);
+const WEAK_PASSWORDS = new Set(['', 'admin123', 'admin', 'password', '12345678']);
 
-  const existing = await prisma.user.findUnique({ where: { username } });
-  if (existing) {
-    await prisma.user.update({
-      where: { username },
-      data: { role: 'platform', opticsId: null },
+function requireStrongPassword(password) {
+  if (WEAK_PASSWORDS.has(password) || password.length < 12) {
+    throw new Error(
+      'Задайте ADMIN_PASSWORD в backend/.env: минимум 12 символов, не admin123',
+    );
+  }
+}
+
+async function main() {
+  const isProd = process.env.NODE_ENV === 'production';
+  const username = (
+    process.env.ADMIN_USERNAME ||
+    (isProd ? '' : 'admin')
+  )
+    .trim()
+    .toLowerCase();
+  const password = process.env.ADMIN_PASSWORD || (isProd ? '' : 'admin123');
+
+  if (isProd && !username) {
+    throw new Error('Задайте ADMIN_USERNAME в backend/.env');
+  }
+
+  let existing = await prisma.user.findUnique({ where: { username } });
+  if (!existing && username !== 'admin') {
+    const legacy = await prisma.user.findUnique({ where: { username: 'admin' } });
+    if (legacy?.role === 'platform') {
+      existing = await prisma.user.update({
+        where: { id: legacy.id },
+        data: { username },
+      });
+      console.log(`Логин платформы сменён: admin → ${username}`);
+    }
+  }
+
+  const weak =
+    existing &&
+    ((await bcrypt.compare('admin123', existing.passwordHash)) ||
+      (await bcrypt.compare(existing.username, existing.passwordHash)));
+
+  if (!existing) {
+    if (isProd) requireStrongPassword(password);
+    await prisma.user.create({
+      data: {
+        username,
+        passwordHash: await bcrypt.hash(password, 10),
+        role: 'platform',
+      },
     });
   } else {
-    await prisma.user.create({
-      data: { username, passwordHash, role: 'platform' },
-    });
+    const data = { role: 'platform', opticsId: null, active: true };
+    if (weak) {
+      if (isProd) requireStrongPassword(password);
+      data.passwordHash = await bcrypt.hash(password, 10);
+    }
+    await prisma.user.update({ where: { id: existing.id }, data });
   }
   console.log(`Платформенный админ готов: ${username}`);
 

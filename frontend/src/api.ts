@@ -66,7 +66,10 @@ export async function downloadCsv(path: string, filename: string) {
   const res = await fetch(`/api${path}`, { headers })
   if (res.status === 401) {
     setToken(null)
-    window.location.href = '/login'
+    const to = window.location.pathname.startsWith('/platform')
+      ? '/platform/login'
+      : '/login'
+    window.location.href = to
     throw new ApiError('Нужно войти заново', 401)
   }
   if (!res.ok) {

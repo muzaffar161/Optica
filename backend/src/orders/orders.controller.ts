@@ -18,6 +18,7 @@ import type { AuthUser } from '../common/auth-user';
 import { opticsIdOf } from '../common/optics-scope';
 import { Access } from '../common/decorators/access.decorator';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { RateLimit } from '../common/rate-limit.decorator';
 
 @Roles(Role.optics)
 @Controller('orders')
@@ -72,12 +73,20 @@ export class OrdersController {
 
   @Post(':id/notify')
   @Access('orders', 'edit')
+  @RateLimit(
+    { name: 'notify-order', limit: 1, windowMs: 45_000, by: 'param:id' },
+    { name: 'notify-salon', limit: 20, windowMs: 60_000, by: 'optics' },
+  )
   notify(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.ordersService.notifyReady(opticsIdOf(user), id);
   }
 
   @Post(':id/resend')
   @Access('orders', 'edit')
+  @RateLimit(
+    { name: 'notify-order', limit: 1, windowMs: 45_000, by: 'param:id' },
+    { name: 'notify-salon', limit: 20, windowMs: 60_000, by: 'optics' },
+  )
   resend(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.ordersService.resend(opticsIdOf(user), id);
   }

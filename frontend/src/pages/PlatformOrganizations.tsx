@@ -332,7 +332,7 @@ export default function PlatformOrganizations() {
               <span className="mb-1 block text-sm text-muted">Пароль</span>
               <input
                 required
-                minLength={6}
+                minLength={8}
                 type="password"
                 value={salonPass}
                 onChange={(e) => setSalonPass(e.target.value)}

@@ -6,6 +6,7 @@ import {
   looksLikePhone,
   UZ_DEFAULT,
 } from '../phone'
+import { track } from '../usage'
 import type { Client } from '../types'
 
 type Props = {
@@ -56,6 +57,7 @@ export default function ClientPicker({
   }, [q, creating, clientId])
 
   function startCreate() {
+    track('picker_create')
     if (looksLikePhone(q)) {
       onStartCreate({ fullName: '', phone: formatPhoneInput(q) || UZ_DEFAULT })
       return
@@ -158,7 +160,10 @@ export default function ClientPicker({
             <button
               key={client.id}
               type="button"
-              onClick={() => onSelect(client)}
+              onClick={() => {
+                track('picker_select')
+                onSelect(client)
+              }}
               className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm hover:bg-paper/70"
             >
               <span className="min-w-0">

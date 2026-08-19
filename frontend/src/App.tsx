@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { useEffect } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { useAuth } from './AuthContext'
 import Layout from './components/Layout'
@@ -11,12 +12,14 @@ import Clients from './pages/Clients'
 import SettingsPage from './pages/Settings'
 import Notifications from './pages/Notifications'
 import PlatformHome from './pages/PlatformHome'
+import PlatformTemplates from './pages/PlatformTemplates'
 import PlatformOrganizations from './pages/PlatformOrganizations'
 import PlatformPlans from './pages/PlatformPlans'
 import PlatformPackages from './pages/PlatformPackages'
 import PlatformPayments from './pages/PlatformPayments'
 import PlatformPaymentDetail from './pages/PlatformPaymentDetail'
 import PlatformPaymentSettings from './pages/PlatformPaymentSettings'
+import PlatformUsage from './pages/PlatformUsage'
 import Staff from './pages/Staff'
 import BillingPage from './pages/Billing'
 import PaymentCheckoutPage from './pages/PaymentCheckout'
@@ -26,6 +29,7 @@ import AuditPage from './pages/Audit'
 import IntegrationsPage from './pages/Integrations'
 import { canEdit, canView, firstAllowedPath, pathModule } from './access'
 import { featuresOf, hasCatalog } from './types'
+import { bootUsage, track, trackSession } from './usage'
 
 function Loading() {
   return (
@@ -89,9 +93,33 @@ function Guest({ children }: { children: ReactNode }) {
   return children
 }
 
+function UsageBeacon() {
+  const { user } = useAuth()
+  const location = useLocation()
+
+  useEffect(() => {
+    bootUsage()
+  }, [])
+
+  useEffect(() => {
+    if (!user || user.role !== 'optics') return
+    trackSession()
+  }, [user])
+
+  useEffect(() => {
+    if (!user || user.role !== 'optics') return
+    if (location.pathname.includes('login')) return
+    track('screen', { path: location.pathname })
+  }, [location.pathname, user])
+
+  return null
+}
+
 export default function App() {
   return (
-    <Routes>
+    <>
+      <UsageBeacon />
+      <Routes>
       <Route
         path="/login"
         element={
@@ -139,14 +167,17 @@ export default function App() {
         }
       >
         <Route path="/platform" element={<PlatformHome />} />
+        <Route path="/platform/templates" element={<PlatformTemplates />} />
         <Route path="/platform/organizations" element={<PlatformOrganizations />} />
         <Route path="/platform/plans" element={<PlatformPlans />} />
         <Route path="/platform/sms-packages" element={<PlatformPackages />} />
         <Route path="/platform/payments" element={<PlatformPayments />} />
         <Route path="/platform/payments/:id" element={<PlatformPaymentDetail />} />
         <Route path="/platform/payment-settings" element={<PlatformPaymentSettings />} />
+        <Route path="/platform/usage" element={<PlatformUsage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </>
   )
 }

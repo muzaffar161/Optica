@@ -12,6 +12,7 @@ import { foldText, toE164 } from '../common/phone';
 import { personName } from '../common/person-name';
 import { pageParams } from '../common/pagination';
 import { searchTokens } from '../common/search';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   archiveCutoff,
   archiveData,
@@ -36,7 +37,10 @@ function clientSearch(q?: string): Prisma.ClientWhereInput | undefined {
 
 @Injectable()
 export class ClientsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly events: EventEmitter2,
+  ) {}
 
   async findAll(
     opticsId: string,
@@ -106,7 +110,7 @@ export class ClientsService {
     }
     try {
       const fullName = personName(dto.fullName);
-      return await this.prisma.client.create({
+      const row = await this.prisma.client.create({
         data: {
           opticsId,
           fullName,
@@ -114,6 +118,13 @@ export class ClientsService {
           phone,
         },
       });
+      this.events.emit('client.created', {
+        phone,
+        fullName,
+        opticsId,
+        clientId: row.id,
+      });
+      return row;
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&

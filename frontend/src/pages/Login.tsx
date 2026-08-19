@@ -7,7 +7,7 @@ type Audience = 'shop' | 'platform'
 export default function Login({ audience }: { audience: Audience }) {
   const { login, logout } = useAuth()
   const isPlatform = audience === 'platform'
-  const [username, setUsername] = useState(isPlatform ? 'admin' : '')
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [pending, setPending] = useState(false)
@@ -17,7 +17,7 @@ export default function Login({ audience }: { audience: Audience }) {
     setError('')
     setPending(true)
     try {
-      const me = await login(username, password)
+      const me = await login(username.trim(), password)
       const expected: Role = isPlatform ? 'platform' : 'optics'
       if (me.role !== expected) {
         logout()
@@ -61,7 +61,7 @@ export default function Login({ audience }: { audience: Audience }) {
                 isPlatform ? 'text-brass' : 'text-muted'
               }`}
             >
-              {isPlatform ? 'admin' : 'вход в панель'}
+              {isPlatform ? 'платформа' : 'вход в панель'}
             </div>
           </div>
         </div>
@@ -73,6 +73,10 @@ export default function Login({ audience }: { audience: Audience }) {
               Логин
             </span>
             <input
+              required
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               className={`w-full rounded-xl border px-3 py-2.5 outline-none ${
                 isPlatform
                   ? 'border-white/10 bg-[#101418] text-white'
@@ -90,6 +94,7 @@ export default function Login({ audience }: { audience: Audience }) {
               Пароль
             </span>
             <input
+              required
               type="password"
               className={`w-full rounded-xl border px-3 py-2.5 outline-none ${
                 isPlatform
