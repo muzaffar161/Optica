@@ -1,3 +1,5 @@
+import { transliterateCyrillic, type TranslitLang } from './translit'
+
 export const TEMPLATE_VARS = [
   { key: 'firstName', label: 'Имя', sample: 'Александр' },
   { key: 'fullName', label: 'ФИО', sample: 'Александр Петров' },
@@ -147,19 +149,38 @@ export function clampSmsCharLimit(value?: number | null) {
   return Math.min(MAX_SMS_CHAR_LIMIT, Math.max(MIN_SMS_CHAR_LIMIT, n))
 }
 
-export function smsMeta(text: string, limit = DEFAULT_SMS_CHAR_LIMIT) {
-  const chars = [...text].length
-  const cap = clampSmsCharLimit(limit)
-  const parts = chars === 0 ? 0 : chars <= cap ? 1 : Math.ceil(chars / cap)
+export function smsMeta(
+  text: string,
+  limit: number | null | undefined = DEFAULT_SMS_CHAR_LIMIT,
+  toLatin = false,
+  lang: TranslitLang = 'ru',
+) {
+  const shown = toLatin ? transliterateCyrillic(text, lang) : text
+  const chars = [...shown].length
+  const unlimited = limit == null
+  const cap = unlimited ? chars : clampSmsCharLimit(limit)
+  const parts = chars === 0 ? 0 : unlimited ? 1 : chars <= cap ? 1 : Math.ceil(chars / cap)
   return {
     chars,
     parts,
-    gsm: false,
+    gsm: toLatin,
     limit: cap,
-    remaining: cap - chars,
-    over: chars > cap,
-    label: 'кириллица',
+    remaining: unlimited ? 0 : cap - chars,
+    over: unlimited ? false : chars > cap,
+    unlimited,
+    label: toLatin ? 'латиница' : 'кириллица',
+    text: shown,
   }
+}
+
+export function prepareSms(
+  text: string,
+  max = DEFAULT_SMS_CHAR_LIMIT,
+  opts?: { toLatin?: boolean; keepSuffix?: string; lang?: TranslitLang; truncate?: boolean },
+) {
+  const raw = opts?.toLatin ? transliterateCyrillic(text, opts.lang ?? 'ru') : text
+  if (opts?.truncate === false) return raw.trim()
+  return fitSms(raw, max, opts?.keepSuffix)
 }
 
 export function fitSms(text: string, max = DEFAULT_SMS_CHAR_LIMIT, keepSuffix = '') {

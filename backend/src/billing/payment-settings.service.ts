@@ -3,6 +3,7 @@ import { PaymentMethod } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { deleteUpload, savePlatformImage, type UploadedImage } from '../uploads/upload';
 import { personName } from '../common/person-name';
+import { toE164 } from '../common/phone';
 
 export type PaymentSettings = {
   clickInstructions: string;
@@ -14,6 +15,9 @@ export type PaymentSettings = {
   paymentExpireHours: number;
   clickEnabled: boolean;
   cardEnabled: boolean;
+  adminAlertPhone: string;
+  adminAlertVia: 'auto' | 'sms' | 'telegram';
+  adminTelegramLinked: boolean;
 };
 
 const DEFAULTS: PaymentSettings = {
@@ -26,6 +30,9 @@ const DEFAULTS: PaymentSettings = {
   paymentExpireHours: 24,
   clickEnabled: true,
   cardEnabled: true,
+  adminAlertPhone: '',
+  adminAlertVia: 'auto',
+  adminTelegramLinked: false,
 };
 
 @Injectable()
@@ -47,6 +54,9 @@ export class PaymentSettingsService {
       paymentExpireHours: row.paymentExpireHours || 24,
       clickEnabled: row.clickEnabled,
       cardEnabled: row.cardEnabled,
+      adminAlertPhone: row.adminAlertPhone || '',
+      adminAlertVia: parseVia(row.adminAlertVia),
+      adminTelegramLinked: Boolean(row.adminTelegramChatId?.trim()),
     };
   }
 
@@ -64,7 +74,9 @@ export class PaymentSettingsService {
 
   async publicView() {
     const settings = await this.get();
-    return settings;
+    const { adminAlertPhone: _p, adminAlertVia: _v, adminTelegramLinked: _l, ...rest } =
+      settings;
+    return rest;
   }
 
   async update(dto: Partial<PaymentSettings>, qr?: UploadedImage | null) {
@@ -80,6 +92,8 @@ export class PaymentSettingsService {
     if (!clickEnabled && !cardEnabled) {
       throw new BadRequestException('Включите хотя бы один способ оплаты');
     }
+    const nextPhone =
+      dto.adminAlertPhone != null ? parseAlertPhone(dto.adminAlertPhone) : null;
     await this.prisma.platformConfig.update({
       where: { id: 'default' },
       data: {
@@ -96,8 +110,30 @@ export class PaymentSettingsService {
             : current.paymentExpireHours,
         clickEnabled,
         cardEnabled,
+        ...(dto.adminAlertVia != null ? { adminAlertVia: parseVia(dto.adminAlertVia) } : {}),
+        ...(nextPhone != null
+          ? {
+              adminAlertPhone: nextPhone,
+              ...(nextPhone !== current.adminAlertPhone ? { adminTelegramChatId: '' } : {}),
+            }
+          : {}),
       },
     });
     return this.get();
   }
+}
+
+function parseVia(value?: string | null): 'auto' | 'sms' | 'telegram' {
+  if (value === 'sms' || value === 'telegram') return value;
+  return 'auto';
+}
+
+function parseAlertPhone(raw: string) {
+  const text = raw.trim();
+  if (!text) return '';
+  const phone = toE164(text);
+  if (!phone) {
+    throw new BadRequestException('Проверьте номер для SMS-заявок');
+  }
+  return phone;
 }

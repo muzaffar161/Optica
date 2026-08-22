@@ -36,7 +36,7 @@ export default function Login({ audience }: { audience: Audience }) {
 
   return (
     <div
-      className={`flex min-h-svh items-center justify-center px-4 ${
+      className={`flex min-h-svh items-center justify-center px-4 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] ${
         isPlatform ? 'bg-[#101418]' : 'bg-paper'
       }`}
     >

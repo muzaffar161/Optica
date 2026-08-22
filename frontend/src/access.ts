@@ -49,6 +49,9 @@ export function canAll(user: AuthUser | null | undefined, module: AccessModule) 
 }
 
 export function firstAllowedPath(user: AuthUser) {
+  if (user.role === 'optics' && user.subscriptionActive === false) {
+    return user.orgOwner ? '/billing' : '/'
+  }
   if (canView(user, 'orders')) return '/'
   if (canView(user, 'products') && user.catalogOrders !== false) return '/products'
   if (canView(user, 'clients')) return '/clients'

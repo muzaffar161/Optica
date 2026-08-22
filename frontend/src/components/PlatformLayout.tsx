@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../AuthContext'
+import PullToRefresh from './PullToRefresh'
 
 export default function PlatformLayout() {
   const { user, logout } = useAuth()
@@ -24,6 +25,7 @@ export default function PlatformLayout() {
       <nav className="flex flex-1 flex-col gap-1 px-3">
         {[
           { to: '/platform', label: 'Салоны', end: true },
+          { to: '/platform/sms', label: 'SMS' },
           { to: '/platform/templates', label: 'Шаблоны' },
           { to: '/platform/organizations', label: 'Подписки' },
           { to: '/platform/payments', label: 'Платежи' },
@@ -48,7 +50,7 @@ export default function PlatformLayout() {
           </NavLink>
         ))}
       </nav>
-      <div className="border-t border-white/10 px-5 py-4">
+      <div className="border-t border-white/10 px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
         <div className="text-xs text-white/50">Главный админ</div>
         <div className="mt-0.5 text-sm">{user?.username}</div>
         <button
@@ -81,7 +83,7 @@ export default function PlatformLayout() {
         </div>
       )}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-40 flex items-center gap-3 border-b border-line bg-card/95 px-4 py-3 backdrop-blur md:hidden">
+        <header className="sticky top-0 z-40 flex items-center gap-3 border-b border-line bg-card/95 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur md:hidden">
           <button
             type="button"
             onClick={() => setMenuOpen(true)}
@@ -107,7 +109,9 @@ export default function PlatformLayout() {
           </button>
         </header>
         <main className="min-w-0 flex-1 p-4 md:p-8">
-          <Outlet />
+          <PullToRefresh>
+            <Outlet />
+          </PullToRefresh>
         </main>
       </div>
     </div>

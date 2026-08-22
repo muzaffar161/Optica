@@ -21,6 +21,7 @@ import {
 import { searchTokens } from '../common/search';
 import { opticsFeatures } from '../common/optics-features';
 import { formatRxTitle, parseRxJson, signedRx } from '../common/rx';
+import { NotificationsService } from '../notifications/notifications.service';
 
 const orderInclude = {
   client: true,
@@ -61,6 +62,7 @@ export class OrdersService {
     private readonly prisma: PrismaService,
     private readonly events: EventEmitter2,
     private readonly clients: ClientsService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async findAll(
@@ -297,8 +299,7 @@ export class OrdersService {
       include: orderInclude,
     });
     if (dto.status === OrderStatus.ready && prev.status !== OrderStatus.ready) {
-      await this.events.emitAsync('order.ready', { orderId: id });
-      return this.findOne(opticsId, id);
+      return this.afterReady(opticsId, id);
     }
     return row;
   }
@@ -315,13 +316,17 @@ export class OrdersService {
       where: { id },
       data: { status: OrderStatus.ready },
     });
-    await this.events.emitAsync('order.ready', { orderId: id });
-    return this.findOne(opticsId, id);
+    return this.afterReady(opticsId, id);
   }
 
   async resend(opticsId: string, id: string) {
     await this.findOne(opticsId, id);
-    await this.events.emitAsync('order.ready', { orderId: id });
-    return this.findOne(opticsId, id);
+    return this.afterReady(opticsId, id);
+  }
+
+  private async afterReady(opticsId: string, id: string) {
+    const result = await this.notifications.notifyOrderReady(id);
+    const order = await this.findOne(opticsId, id);
+    return { ...order, deviceSms: result.deviceSms ?? null };
   }
 }

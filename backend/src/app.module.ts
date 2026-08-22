@@ -19,6 +19,7 @@ import { CategoriesModule } from './categories/categories.module';
 import { StaffModule } from './staff/staff.module';
 import { RateLimitModule } from './common/rate-limit.module';
 import { RateLimitGuard } from './common/rate-limit.guard';
+import { SubscriptionGuard } from './billing/subscription.guard';
 
 @Module({
   imports: [
@@ -54,6 +55,10 @@ import { RateLimitGuard } from './common/rate-limit.guard';
     {
       provide: APP_GUARD,
       useClass: AccessGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: SubscriptionGuard,
     },
   ],
 })

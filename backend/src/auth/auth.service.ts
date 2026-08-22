@@ -5,6 +5,12 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ownerAccess } from '../common/access';
 import { featuresOf } from '../common/plan-features';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { SubscriptionService } from '../billing/subscription.service';
+import { PlatformSmsService } from '../billing/platform-sms.service';
+import {
+  clampSubscriptionWarnDays,
+  subscriptionDaysLeft,
+} from '../common/subscription';
 
 const DUMMY_HASH = bcrypt.hashSync('optika-timing-dummy', 10);
 
@@ -14,6 +20,8 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly events: EventEmitter2,
+    private readonly subscriptions: SubscriptionService,
+    private readonly platformSms: PlatformSmsService,
   ) {}
 
   async login(username: string, password: string) {
@@ -71,15 +79,13 @@ export class AuthService {
         })
       : null;
     const orgId = user.organizationId ?? user.optics?.organizationId ?? null;
+    const prefs = await this.platformSms.prefs();
     const sub = orgId
-      ? await this.prisma.subscription.findFirst({
-          where: { organizationId: orgId, status: 'ACTIVE' },
-          include: { plan: true },
-          orderBy: { startedAt: 'desc' },
-        })
+      ? await this.subscriptions.getCurrentSubscription(orgId)
       : null;
-    const plan =
-      sub && sub.expiresAt.getTime() >= Date.now() ? sub.plan : null;
+    const active = Boolean(sub && sub.status === 'ACTIVE');
+    const plan = active && sub ? sub.plan : null;
+    const expiresAt = active && sub ? sub.expiresAt : null;
     return {
       id: user.id,
       username: user.username,
@@ -94,6 +100,11 @@ export class AuthService {
       rxOrders: user.optics?.rxOrders ?? false,
       theme: settings?.theme ?? 'atelier',
       planFeatures: featuresOf(plan),
+      subscriptionActive: user.role !== 'optics' ? true : active,
+      subscriptionExpiresAt: expiresAt ? expiresAt.toISOString() : null,
+      subscriptionDaysLeft: subscriptionDaysLeft(expiresAt),
+      subscriptionWarnDays: clampSubscriptionWarnDays(prefs.subscriptionWarnDays),
+      smsViaDevice: Boolean(prefs.smsViaDevice),
       access: user.isOwner
         ? ownerAccess()
         : {

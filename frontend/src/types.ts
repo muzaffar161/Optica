@@ -21,6 +21,11 @@ export type AuthUser = {
   organizationId?: string | null
   orgOwner?: boolean
   planFeatures?: PlanFeatures
+  subscriptionActive?: boolean
+  subscriptionExpiresAt?: string | null
+  subscriptionDaysLeft?: number
+  subscriptionWarnDays?: number
+  smsViaDevice?: boolean
   access?: Record<AccessModule, AccessLevel>
 }
 
@@ -92,6 +97,11 @@ export type OrderItem = {
   photoPath: string | null
 }
 
+export type DeviceSms = {
+  phone: string
+  messages: string[]
+}
+
 export type Order = {
   id: string
   title: string
@@ -108,6 +118,7 @@ export type Order = {
   client: Client
   items?: OrderItem[]
   notifications?: NotificationLog[]
+  deviceSms?: DeviceSms | null
 }
 
 export type Settings = {
@@ -128,6 +139,8 @@ export type Settings = {
   checkupIntervalMonths?: number
   checkupNotifyDay?: number
   smsCharLimit?: number
+  smsToLatin?: boolean
+  smsViaDevice?: boolean
 }
 
 export const STATUS_LABEL: Record<OrderStatus, string> = {

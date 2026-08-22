@@ -13,6 +13,7 @@ import { OrgBillingController } from './org-billing.controller';
 import { PlatformBillingController } from './platform-billing.controller';
 import { ManualPaymentProvider } from './providers/manual-payment.provider';
 import { PAYMENT_PROVIDER } from './providers/payment-provider.interface';
+import { SubscriptionGuard } from './subscription.guard';
 
 @Module({
   controllers: [OrgBillingController, PlatformBillingController],
@@ -30,7 +31,15 @@ import { PAYMENT_PROVIDER } from './providers/payment-provider.interface';
     OrgNetworkService,
     ManualPaymentProvider,
     { provide: PAYMENT_PROVIDER, useExisting: ManualPaymentProvider },
+    SubscriptionGuard,
   ],
-  exports: [SubscriptionService, SmsWalletService, PlatformSmsService, PlanService, PaymentService],
+  exports: [
+    SubscriptionService,
+    SmsWalletService,
+    PlatformSmsService,
+    PlanService,
+    PaymentService,
+    SubscriptionGuard,
+  ],
 })
 export class BillingModule {}

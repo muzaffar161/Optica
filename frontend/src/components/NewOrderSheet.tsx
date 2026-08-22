@@ -455,7 +455,7 @@ export default function NewOrderSheet() {
   )
 
   return (
-    <div className="flex h-dvh flex-col bg-card">
+    <div className="flex h-full min-h-0 flex-col bg-card">
         <div className="flex items-center gap-2 border-b border-line px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] md:px-5">
           <h2 className="min-w-0 flex-1 font-display text-xl">Новый заказ</h2>
           <button

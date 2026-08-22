@@ -4,6 +4,7 @@ import { NotificationsController } from './notifications.controller';
 import { SmsService } from './sms.service';
 import { CheckupReminderService } from './checkup-reminder.service';
 import { WelcomeSmsService } from './welcome-sms.service';
+import { PaymentAlertService } from './payment-alert.service';
 import { SettingsModule } from '../settings/settings.module';
 import { TelegramModule } from '../telegram/telegram.module';
 import { BillingModule } from '../billing/billing.module';
@@ -11,6 +12,7 @@ import { BillingModule } from '../billing/billing.module';
 @Module({
   imports: [SettingsModule, TelegramModule, BillingModule],
   controllers: [NotificationsController],
-  providers: [NotificationsService, SmsService, CheckupReminderService, WelcomeSmsService],
+  providers: [NotificationsService, SmsService, CheckupReminderService, WelcomeSmsService, PaymentAlertService],
+  exports: [NotificationsService],
 })
 export class NotificationsModule {}

@@ -33,9 +33,9 @@ export class SettingsService {
     const existing = await this.prisma.settings.findUnique({
       where: { opticsId },
     });
-    const smsCharLimit = await this.platformSms.charLimit();
+    const prefs = await this.platformSms.prefs();
     if (existing) {
-      return { ...existing, smsCharLimit };
+      return { ...existing, ...prefs };
     }
     const optics = await this.prisma.optics.findUnique({
       where: { id: opticsId },
@@ -53,7 +53,7 @@ export class SettingsService {
         messageLang: 'ru',
       },
     });
-    return { ...created, smsCharLimit };
+    return { ...created, ...prefs };
   }
 
   async update(opticsId: string, dto: UpdateSettingsDto) {
@@ -117,7 +117,7 @@ export class SettingsService {
       where: { opticsId },
       data,
     });
-    return { ...row, smsCharLimit: await this.platformSms.charLimit() };
+    return { ...row, ...(await this.platformSms.prefs()) };
   }
 
   listTemplates() {

@@ -1,13 +1,20 @@
 {
+  "id": "/",
   "name": "Оптика",
   "short_name": "Оптика",
   "description": "Админ-панель салона оптики",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
   "background_color": "#f3eee4",
   "theme_color": "#14261f",
   "lang": "ru",
+  "prefer_related_applications": false,
+  "handle_links": "preferred",
+  "launch_handler": {
+    "client_mode": ["navigate-existing", "auto"]
+  },
   "icons": [
     {
       "src": "/pwa-192.png",

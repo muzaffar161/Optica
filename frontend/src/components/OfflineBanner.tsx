@@ -20,7 +20,7 @@ export default function OfflineBanner() {
 
   if (!offline) return null
   return (
-    <div className="bg-ink px-4 py-2 text-center text-sm text-white">
+    <div className="bg-ink px-4 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] text-center text-sm text-white">
       Нет сети. Заказы не сохранятся, пока не появится интернет.
     </div>
   )

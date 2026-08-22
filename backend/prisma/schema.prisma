@@ -230,6 +230,12 @@ model PlatformConfig {
   cardEnabled          Boolean  @default(true)
   smsBalance           Int      @default(0)
   smsCharLimit         Int      @default(70)
+  smsToLatin           Boolean  @default(false)
+  smsViaDevice         Boolean  @default(false)
+  subscriptionWarnDays Int      @default(7)
+  adminAlertPhone      String   @default("")
+  adminAlertVia        String   @default("auto")
+  adminTelegramChatId  String   @default("")
   botLink              String   @default("")
   updatedAt            DateTime @updatedAt
 }
@@ -379,12 +385,18 @@ model SmsWallet {
 }
 
 model PlatformSmsTx {
-  id           String     @id @default(cuid())
-  amount       Int
-  type         SmsTxType
-  description  String     @default("")
-  balanceAfter Int
-  createdAt    DateTime   @default(now())
+  id             String     @id @default(cuid())
+  amount         Int
+  type           SmsTxType
+  kind           String     @default("")
+  organizationId String     @default("")
+  description    String     @default("")
+  balanceAfter   Int
+  createdAt      DateTime   @default(now())
+
+  @@index([createdAt])
+  @@index([kind])
+  @@index([organizationId])
 }
 
 model ProductPhone {

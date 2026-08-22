@@ -10,6 +10,7 @@ import PhoneInput from '../components/PhoneInput'
 import ThemePicker from '../components/ThemePicker'
 import TemplatePicker from '../components/TemplatePicker'
 import { applyTheme, THEMES } from '../themes'
+import { promptInstall, usePwaInstall } from '../pwa'
 
 const ARCHIVE_DAYS = [3, 7, 10, 14, 30, 60, 90]
 const CHECKUP_MONTHS = [3, 6, 12]
@@ -78,6 +79,8 @@ export default function SettingsPage() {
   const [pending, setPending] = useState(false)
   const [reminding, setReminding] = useState(false)
   const [section, setSection] = useState<SectionId | null>(null)
+  const [iosHint, setIosHint] = useState(false)
+  const pwa = usePwaInstall()
 
   useEffect(() => {
     Promise.all([api<Settings>('/settings'), api<CatalogTemplate[]>('/settings/templates')])
@@ -372,8 +375,11 @@ export default function SettingsPage() {
           {section === 'message' && (
             <section className="space-y-3 rounded-2xl border border-line bg-card p-5">
               <p className="text-sm text-muted">
-                Русский, узбекский или оба. Telegram — полный текст бесплатно. SMS — короткая
-                версия: оба языка = 2 SMS, лимит {form.smsCharLimit ?? 70} символов.
+                Русский, узбекский или оба. Telegram — полный текст бесплатно.{' '}
+                {form.smsViaDevice
+                  ? 'SMS открывается на телефоне салона и не обрезается.'
+                  : `SMS — короткая версия: оба языка = 2 SMS, лимит ${form.smsCharLimit ?? 70} символов`}
+                {form.smsToLatin ? ', перед отправкой кириллица станет латиницей' : ''}.
               </p>
               {writable ? (
                 <>
@@ -401,7 +407,8 @@ export default function SettingsPage() {
                     items={templates}
                     selectedId={form.templateId || currentTpl?.id}
                     lang={lang}
-                    smsLimit={form.smsCharLimit}
+                    smsLimit={form.smsViaDevice ? null : form.smsCharLimit}
+                    toLatin={form.smsToLatin}
                     previewVars={{
                       opticsName: form.opticsName,
                       address: form.address,
@@ -448,6 +455,15 @@ export default function SettingsPage() {
         <h1 className="font-display text-3xl">Настройки</h1>
         <p className="mt-1 text-sm text-muted">{form.opticsName}</p>
       </div>
+
+      <PwaCard
+        installed={pwa.installed}
+        canPrompt={pwa.canPrompt}
+        ios={pwa.ios}
+        iosHint={iosHint}
+        onIos={() => setIosHint(true)}
+        onToast={(msg, kind) => toast(msg, kind)}
+      />
 
       <div className="overflow-hidden rounded-2xl border border-line bg-card">
         <Row
@@ -540,5 +556,84 @@ export default function SettingsPage() {
         />
       </div>
     </div>
+  )
+}
+
+function PwaCard({
+  installed,
+  canPrompt,
+  ios,
+  iosHint,
+  onIos,
+  onToast,
+}: {
+  installed: boolean
+  canPrompt: boolean
+  ios: boolean
+  iosHint: boolean
+  onIos: () => void
+  onToast: (msg: string, kind?: 'ok' | 'err') => void
+}) {
+  const [pending, setPending] = useState(false)
+
+  async function download() {
+    if (installed) return
+    if (ios) {
+      onIos()
+      return
+    }
+    if (!canPrompt) {
+      onToast('Откройте панель в Chrome или Edge — там установка одним нажатием.', 'err')
+      return
+    }
+    setPending(true)
+    try {
+      const outcome = await promptInstall()
+      if (outcome === 'accepted') onToast('Приложение установлено')
+      else if (outcome === 'dismissed') onToast('Установка отменена', 'err')
+      else onToast('Сейчас браузер не даёт установить. Откройте в Chrome.', 'err')
+    } finally {
+      setPending(false)
+    }
+  }
+
+  return (
+    <section className="rounded-2xl border border-line bg-card p-5">
+      <div className="flex items-start gap-3">
+        <Icon className="bg-ink">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+            <rect x="3.2" y="1.8" width="9.6" height="12.4" rx="1.6" stroke="currentColor" strokeWidth="1.5" />
+            <path d="M8 7.2v4M6.2 9.4 8 11.2l1.8-1.8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </Icon>
+        <div className="min-w-0 flex-1">
+          <div className="font-medium">Приложение на телефон</div>
+          <p className="mt-1 text-sm text-muted">
+            Ярлык на рабочем столе, без строки браузера.
+          </p>
+        </div>
+      </div>
+      {installed ? (
+        <div className="mt-4 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          Уже установлено на этом устройстве
+        </div>
+      ) : (
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => void download()}
+          className="mt-4 w-full rounded-xl bg-ink px-5 py-3 text-sm font-medium text-white disabled:opacity-60"
+        >
+          {pending ? 'Открываем…' : 'Скачать'}
+        </button>
+      )}
+      {ios && iosHint && !installed && (
+        <ol className="mt-3 list-decimal space-y-1 pl-5 text-sm text-muted">
+          <li>Внизу Safari нажмите «Поделиться»</li>
+          <li>Выберите «На экран „Домой“»</li>
+          <li>Нажмите «Добавить»</li>
+        </ol>
+      )}
+    </section>
   )
 }

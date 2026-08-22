@@ -12,8 +12,9 @@ import {
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { SmsWalletService } from './sms-wallet.service';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { SubscriptionService } from './subscription.service';
+import { PlatformSmsService } from './platform-sms.service';
 import { PaymentNumberService } from './payment-number.service';
 import {
   PAYMENT_PROVIDER,
@@ -36,10 +37,11 @@ export class PaymentService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly numbers: PaymentNumberService,
-    private readonly wallet: SmsWalletService,
+    private readonly pot: PlatformSmsService,
     private readonly subscriptions: SubscriptionService,
     @Inject(PAYMENT_PROVIDER) private readonly provider: PaymentProvider,
     private readonly paymentSettings: PaymentSettingsService,
+    private readonly events: EventEmitter2,
   ) {}
 
   async create(opts: {
@@ -76,6 +78,12 @@ export class PaymentService {
   }
 
   async createSmsPackage(organizationId: string, smsPackageId: string) {
+    const prefs = await this.pot.prefs();
+    if (prefs.smsViaDevice) {
+      throw new ForbiddenException(
+        'SMS отправляются с телефона салона. Покупка пакетов недоступна.',
+      );
+    }
     const pack = await this.prisma.smsPackage.findUnique({
       where: { id: smsPackageId },
     });
@@ -226,6 +234,7 @@ export class PaymentService {
       },
       include: paymentInclude,
     });
+    this.alertAdmin('submitted', updated);
     return this.view(updated);
   }
 
@@ -272,7 +281,7 @@ export class PaymentService {
         if (!locked.smsPackage) {
           throw new BadRequestException('SMS-пакет платежа не найден');
         }
-        await this.wallet.creditInTx(tx, {
+        await this.pot.allocateFromPotInTx(tx, {
           organizationId: locked.organizationId,
           amount: locked.smsPackage.smsCount,
           type: 'PACKAGE_PURCHASE',
@@ -395,6 +404,7 @@ export class PaymentService {
           include: paymentInclude,
         });
         await this.provider.createPayment(row);
+        this.alertAdmin('created', row);
         return this.view(row);
       } catch (err) {
         if (
@@ -503,6 +513,13 @@ export class PaymentService {
             ? `SMS-пакет «${row.smsPackage.name}» (${row.smsPackage.smsCount} SMS)`
             : 'SMS-пакет',
     };
+  }
+
+  private alertAdmin(
+    kind: 'created' | 'submitted',
+    row: Prisma.PaymentGetPayload<{ include: typeof paymentInclude }>,
+  ) {
+    this.events.emit('payment.alert', { kind, payment: this.view(row) });
   }
 }
 

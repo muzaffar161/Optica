@@ -8,7 +8,7 @@ import { TelegramService } from '../telegram/telegram.service';
 import { MessageTemplatesService } from '../settings/message-templates.service';
 import {
   firstNameOf,
-  fitSms,
+  prepareSms,
   renderTemplate,
 } from '../common/template';
 
@@ -80,18 +80,26 @@ export class WelcomeSmsService {
       await this.release(phone);
       return;
     }
-    const text = fitSms(
+    const prefs = await this.wallet.prefs();
+    const text = prepareSms(
       renderTemplate(raw, { firstName, fullName: payload.fullName, link }),
-      await this.wallet.charLimit(),
-      link,
+      prefs.smsCharLimit,
+      { toLatin: prefs.smsToLatin, keepSuffix: link, lang },
     );
     if (!text) {
       await this.release(phone);
       return;
     }
 
+    const optics = await this.prisma.optics.findUnique({
+      where: { id: payload.opticsId },
+      select: { organizationId: true, name: true },
+    });
     try {
-      await this.wallet.debit(1, `Приветствие продукта ${phone}`);
+      await this.wallet.debit(1, `Приветствие · ${optics?.name || ''} ${phone}`, {
+        kind: 'welcome',
+        organizationId: optics?.organizationId,
+      });
     } catch (err) {
       await this.release(phone);
       throw err;
@@ -104,7 +112,10 @@ export class WelcomeSmsService {
         data: { welcomedAt: new Date() },
       });
     } catch (err) {
-      await this.wallet.credit(1, `Возврат: приветствие ${phone} не отправилось`);
+      await this.wallet.credit(1, `Возврат: приветствие ${phone} не отправилось`, {
+        kind: 'welcome',
+        organizationId: optics?.organizationId,
+      });
       await this.release(phone);
       throw err;
     }

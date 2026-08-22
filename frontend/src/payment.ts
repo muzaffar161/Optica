@@ -17,6 +17,9 @@ export type PaymentSettings = {
   paymentExpireHours: number
   clickEnabled: boolean
   cardEnabled: boolean
+  adminAlertPhone?: string
+  adminAlertVia?: 'auto' | 'sms' | 'telegram'
+  adminTelegramLinked?: boolean
 }
 
 export type Payment = {

@@ -18,6 +18,7 @@ import type { AuthUser } from '../common/auth-user';
 import { PlanService, SmsPackageAdminService } from './plan.service';
 import { SubscriptionService } from './subscription.service';
 import { SmsWalletService } from './sms-wallet.service';
+import { PlatformSmsService } from './platform-sms.service';
 import { PaymentService } from './payment.service';
 import { PaymentSettingsService } from './payment-settings.service';
 import {
@@ -48,6 +49,7 @@ export class PlatformBillingController {
     private readonly packages: SmsPackageAdminService,
     private readonly subscriptions: SubscriptionService,
     private readonly wallet: SmsWalletService,
+    private readonly pot: PlatformSmsService,
     private readonly network: OrgNetworkService,
     private readonly payments: PaymentService,
     private readonly paymentSettings: PaymentSettingsService,
@@ -114,17 +116,16 @@ export class PlatformBillingController {
       return this.wallet.getWallet(id);
     }
     if (dto.amount > 0) {
-      return this.wallet.credit({
+      return this.pot.allocateFromPot({
         organizationId: id,
         amount: dto.amount,
         type: 'ADJUSTMENT',
         description: dto.reason,
       });
     }
-    return this.wallet.debit({
+    return this.pot.reclaimToPot({
       organizationId: id,
       amount: Math.abs(dto.amount),
-      type: 'ADJUSTMENT',
       description: dto.reason,
     });
   }

@@ -33,6 +33,7 @@ import {
   type Page,
 } from '../types'
 import { UZ_DEFAULT } from '../phone'
+import { openDeviceSms, type DeviceSms } from '../deviceSms'
 
 const PAGE_SIZE = 50
 
@@ -178,6 +179,7 @@ export default function Orders() {
   const [archive, setArchive] = useState(false)
   const [archiveAfterDays, setArchiveAfterDays] = useState(10)
   const [pendingId, setPendingId] = useState<string | null>(null)
+  const [deviceSms, setDeviceSms] = useState<DeviceSms | null>(null)
 
   async function load(nextPage = page) {
     const query = new URLSearchParams()
@@ -209,9 +211,14 @@ export default function Orders() {
   }, [status, q, archive])
 
   function toastNotify(updated: Order) {
+    if (updated.deviceSms?.messages?.length) {
+      setDeviceSms(updated.deviceSms)
+      toast('Откройте SMS и нажмите Отправить')
+      return
+    }
     const channel = lastChannel(updated)
     if (channel === 'telegram') toast('Отправлено в Telegram')
-    else if (channel === 'sms') toast('SMS-заглушка (Telegram недоступен)')
+    else if (channel === 'sms') toast('SMS отправлено')
     else toast('Уведомление обработано')
   }
 
@@ -595,6 +602,53 @@ export default function Orders() {
           Новый заказ
         </Link>
       )}
+      {deviceSms && (
+        <DeviceSmsSheet draft={deviceSms} onClose={() => setDeviceSms(null)} />
+      )}
+    </div>
+  )
+}
+
+function DeviceSmsSheet({
+  draft,
+  onClose,
+}: {
+  draft: DeviceSms
+  onClose: () => void
+}) {
+  const body = draft.messages.filter(Boolean).join('\n\n')
+  useEffect(() => {
+    openDeviceSms(draft)
+  }, [draft])
+  return (
+    <div className="fixed inset-0 z-50">
+      <button
+        type="button"
+        className="absolute inset-0 bg-ink/40"
+        aria-label="Закрыть"
+        onClick={onClose}
+      />
+      <div className="absolute inset-x-0 bottom-0 rounded-t-3xl border border-line bg-card px-5 pt-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-xl">
+        <div className="font-display text-2xl">SMS клиенту</div>
+        <div className="mt-1 text-sm text-muted">{draft.phone}</div>
+        <p className="mt-3 max-h-40 overflow-y-auto whitespace-pre-wrap rounded-xl bg-paper px-3 py-3 text-sm">
+          {body}
+        </p>
+        <button
+          type="button"
+          onClick={() => openDeviceSms(draft)}
+          className="mt-4 w-full rounded-xl bg-ink py-3 text-sm font-medium text-white"
+        >
+          Открыть SMS
+        </button>
+        <button
+          type="button"
+          onClick={onClose}
+          className="mt-2 w-full py-2 text-sm text-muted"
+        >
+          Позже
+        </button>
+      </div>
     </div>
   )
 }

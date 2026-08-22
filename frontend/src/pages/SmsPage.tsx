@@ -4,6 +4,7 @@ import { api } from '../api'
 import { useToast } from '../Toast'
 import Pagination from '../components/Pagination'
 import { formatDate, formatSum } from '../types'
+import { useAuth } from '../AuthContext'
 import type { Payment } from '../payment'
 
 const TX_LABEL: Record<string, string> = {
@@ -27,6 +28,8 @@ type Tx = {
 export default function SmsPage() {
   const toast = useToast()
   const navigate = useNavigate()
+  const { user } = useAuth()
+  const viaPhone = Boolean(user?.smsViaDevice)
   const [stats, setStats] = useState({
     balance: 0,
     sent: 0,
@@ -40,6 +43,7 @@ export default function SmsPage() {
   const [pendingId, setPendingId] = useState<string | null>(null)
 
   async function load(next = 1) {
+    if (viaPhone) return
     const [s, p, tx] = await Promise.all([
       api<typeof stats>('/sms/balance'),
       api<Pack[]>('/sms/packages'),
@@ -53,10 +57,12 @@ export default function SmsPage() {
   }
 
   useEffect(() => {
+    if (viaPhone) return
     load(1).catch((err: Error) => toast(err.message, 'err'))
-  }, [])
+  }, [viaPhone])
 
   async function buy(id: string) {
+    if (viaPhone) return
     setPendingId(id)
     try {
       const row = await api<Payment>(`/sms/packages/${id}/purchase`, { method: 'POST' })
@@ -69,13 +75,26 @@ export default function SmsPage() {
     }
   }
 
+  if (viaPhone) {
+    return (
+      <div className="mx-auto max-w-2xl space-y-4 pb-8">
+        <h1 className="font-display text-3xl">SMS</h1>
+        <section className="rounded-2xl border border-line bg-card p-5">
+          <p className="text-sm text-muted">
+            Сообщения уходят с телефона салона. Покупка SMS-пакетов недоступна.
+          </p>
+        </section>
+      </div>
+    )
+  }
+
   return (
     <div className="mx-auto max-w-2xl space-y-4 pb-8">
       <h1 className="font-display text-3xl">SMS</h1>
       <section className="rounded-2xl border border-line bg-card p-5">
         <div className="font-display text-2xl">{stats.balance} SMS</div>
         <p className="mt-1 text-sm text-muted">
-          Списывается только SMS. Telegram остаётся бесплатным.
+          Списывается с баланса организации. Telegram бесплатный. Баланс пополняет Optika с общего счёта.
         </p>
         <div className="mt-3 grid grid-cols-3 gap-3 text-sm">
           <div>

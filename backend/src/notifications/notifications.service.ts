@@ -1,11 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import { TelegramService } from '../telegram/telegram.service';
 import { SmsService } from './sms.service';
 import { SmsWalletService } from '../billing/sms-wallet.service';
-import { renderTemplate, firstNameOf, moneyVars, withPaymentPlaceholders, publicPlace, langsOf, attachRxPlaceholder, pickSmsBody, fitSms } from '../common/template';
+import { renderTemplate, firstNameOf, moneyVars, withPaymentPlaceholders, publicPlace, langsOf, attachRxPlaceholder, pickSmsBody, prepareSms } from '../common/template';
 import { formatRxBody, formatRxTitle, parseRxJson } from '../common/rx';
 import { MessageTemplatesService } from '../settings/message-templates.service';
 import { pageParams } from '../common/pagination';
@@ -32,11 +32,6 @@ export class NotificationsService {
     private readonly catalog: MessageTemplatesService,
     private readonly platformSms: PlatformSmsService,
   ) {}
-
-  @OnEvent('order.ready')
-  async onOrderReady(payload: { orderId: string }) {
-    await this.notifyOrderReady(payload.orderId);
-  }
 
   async findAll(
     opticsId: string,
@@ -101,7 +96,7 @@ export class NotificationsService {
     });
     if (!order) {
       this.logger.warn(`Заказ ${orderId} не найден для уведомления`);
-      return;
+      return { ok: false };
     }
 
     const settings = await this.settings.get(order.opticsId);
@@ -129,7 +124,7 @@ export class NotificationsService {
     };
     const telegram: string[] = [];
     const sms: string[] = [];
-    const limit = await this.platformSms.charLimit();
+    const prefs = await this.platformSms.prefs();
     for (const lang of langsOf(settings.messageLang)) {
       let body =
         lang === 'uz'
@@ -141,19 +136,24 @@ export class NotificationsService {
       body = withPaymentPlaceholders(body, order.paidAmount, lang);
       const text = renderTemplate(body, vars);
       const smsBody = pickSmsBody(tpl, lang, settings.template);
+      const smsOpts = {
+        toLatin: prefs.smsToLatin,
+        lang,
+        truncate: !prefs.smsViaDevice,
+      } as const;
       const smsText = smsBody
-        ? fitSms(renderTemplate(smsBody, vars), limit)
-        : fitSms(text, limit);
+        ? prepareSms(renderTemplate(smsBody, vars), prefs.smsCharLimit, smsOpts)
+        : prepareSms(text, prefs.smsCharLimit, smsOpts);
       if (!text && !smsText) continue;
       telegram.push(text || smsText);
       sms.push(smsText || text);
     }
     if (!telegram.length && !sms.length) {
       this.logger.warn(`Пустой шаблон для заказа ${orderId}`);
-      return;
+      return { ok: false };
     }
 
-    const ok = await this.deliver({
+    const result = await this.deliver({
       opticsId: order.opticsId,
       organizationId: order.optics.organizationId,
       client: order.client,
@@ -161,14 +161,16 @@ export class NotificationsService {
       messages: telegram,
       smsMessages: sms,
       kind: 'order',
+      allowDevice: true,
       smsDescription:
         sms.length > 1
           ? `SMS клиенту ${order.client.fullName} (2)`
           : `SMS клиенту ${order.client.fullName}`,
     });
-    if (ok) {
+    if (result.ok) {
       await this.markNotified(orderId);
     }
+    return result;
   }
 
   async deliver(opts: {
@@ -185,7 +187,8 @@ export class NotificationsService {
     smsMessages?: string[];
     kind?: string;
     smsDescription?: string;
-  }) {
+    allowDevice?: boolean;
+  }): Promise<{ ok: boolean; deviceSms?: { phone: string; messages: string[] }; smsSkipped?: boolean }> {
     const kind = opts.kind || 'order';
     const telegram = (opts.messages?.length ? opts.messages : opts.message ? [opts.message] : [])
       .map((row) => row.trim())
@@ -193,7 +196,7 @@ export class NotificationsService {
     const smsTexts = (opts.smsMessages?.length ? opts.smsMessages : telegram)
       .map((row) => row.trim())
       .filter(Boolean);
-    if (!telegram.length && !smsTexts.length) return false;
+    if (!telegram.length && !smsTexts.length) return { ok: false };
     const chatId = opts.client.telegramChatId;
     let remaining = smsTexts;
     if (chatId && telegram.length) {
@@ -227,10 +230,32 @@ export class NotificationsService {
           break;
         }
       }
-      if (sentTg === telegram.length) return true;
+      if (sentTg === telegram.length) return { ok: true };
       remaining = smsTexts.slice(sentTg);
     }
-    if (!remaining.length) return true;
+    if (!remaining.length) return { ok: true };
+
+    const prefs = await this.platformSms.prefs();
+    if (prefs.smsViaDevice) {
+      if (!opts.allowDevice) {
+        return { ok: false, smsSkipped: true };
+      }
+      for (const text of remaining) {
+        await this.log({
+          opticsId: opts.opticsId,
+          orderId: opts.orderId,
+          kind,
+          channel: 'sms',
+          status: 'mocked',
+          message: text,
+        });
+      }
+      this.trackNotify(opts, 'sms', true, kind);
+      return {
+        ok: true,
+        deviceSms: { phone: opts.client.phone, messages: remaining },
+      };
+    }
 
     const cost = remaining.length;
     let debitId: string | null = null;
@@ -256,7 +281,7 @@ export class NotificationsService {
       });
       this.logger.warn(`SMS не отправлено: ${reason}`);
       this.trackNotify(opts, 'sms', false, kind);
-      return false;
+      return { ok: false };
     }
 
     let sent = 0;
@@ -299,10 +324,10 @@ export class NotificationsService {
         error: err instanceof Error ? err.message : 'Ошибка SMS',
       });
       this.trackNotify(opts, 'sms', false, kind);
-      return sent > 0;
+      return { ok: sent > 0 };
     }
     this.trackNotify(opts, 'sms', true, kind);
-    return true;
+    return { ok: true };
   }
 
   private trackNotify(

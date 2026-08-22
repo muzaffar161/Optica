@@ -81,6 +81,43 @@ body {
   font-family: var(--font-sans);
 }
 
+html.pwa,
+html.pwa body {
+  overscroll-behavior: none;
+}
+
+html.pwa body {
+  min-height: 100dvh;
+  min-height: -webkit-fill-available;
+}
+
+.pwa-titlebar {
+  display: none;
+}
+
+html.pwa-wco .pwa-titlebar {
+  display: flex;
+  position: fixed;
+  top: 0;
+  left: env(titlebar-area-x, 0px);
+  width: env(titlebar-area-width, 100%);
+  height: env(titlebar-area-height, 32px);
+  z-index: 80;
+  align-items: center;
+  padding: 0 12px;
+  font-family: var(--font-display);
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.82);
+  background: var(--color-nav);
+  app-region: drag;
+  -webkit-app-region: drag;
+}
+
+html.pwa-wco body {
+  padding-top: env(titlebar-area-height, 0px);
+}
+
 button,
 input,
 select,

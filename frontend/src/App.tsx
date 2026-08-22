@@ -13,6 +13,7 @@ import SettingsPage from './pages/Settings'
 import Notifications from './pages/Notifications'
 import PlatformHome from './pages/PlatformHome'
 import PlatformTemplates from './pages/PlatformTemplates'
+import PlatformSms from './pages/PlatformSms'
 import PlatformOrganizations from './pages/PlatformOrganizations'
 import PlatformPlans from './pages/PlatformPlans'
 import PlatformPackages from './pages/PlatformPackages'
@@ -30,6 +31,28 @@ import IntegrationsPage from './pages/Integrations'
 import { canEdit, canView, firstAllowedPath, pathModule } from './access'
 import { featuresOf, hasCatalog } from './types'
 import { bootUsage, track, trackSession } from './usage'
+import { isSubscriptionActive } from './subscription'
+
+function ExpiredWall() {
+  const { logout } = useAuth()
+  return (
+    <div className="flex min-h-svh flex-col items-center justify-center bg-paper px-6 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] text-center">
+      <div className="max-w-md rounded-3xl border border-line bg-card px-6 py-8">
+        <h1 className="font-display text-3xl">Подписка закончилась</h1>
+        <p className="mt-3 text-sm text-muted">
+          Доступ в салон закрыт. Попросите владельца оплатить тариф.
+        </p>
+        <button
+          type="button"
+          onClick={logout}
+          className="mt-6 text-sm text-brass hover:underline"
+        >
+          Выйти
+        </button>
+      </div>
+    </div>
+  )
+}
 
 function Loading() {
   return (
@@ -49,6 +72,14 @@ function ModuleGuard({ children }: { children: ReactNode }) {
   const { user } = useAuth()
   const location = useLocation()
   if (!user) return null
+  if (!isSubscriptionActive(user)) {
+    const onBilling = location.pathname.startsWith('/billing')
+    if (user.orgOwner) {
+      if (!onBilling) return <Navigate to="/billing" replace />
+      return children
+    }
+    return <ExpiredWall />
+  }
   const module = pathModule(location.pathname)
   if (module === 'staff' && user.isOwner === false) {
     return <Navigate to={firstAllowedPath(user)} replace />
@@ -89,7 +120,7 @@ function Guest({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth()
   if (loading) return <Loading />
   if (user?.role === 'platform') return <Navigate to="/platform" replace />
-  if (user) return <Navigate to="/" replace />
+  if (user) return <Navigate to={firstAllowedPath(user)} replace />
   return children
 }
 
@@ -168,6 +199,7 @@ export default function App() {
       >
         <Route path="/platform" element={<PlatformHome />} />
         <Route path="/platform/templates" element={<PlatformTemplates />} />
+        <Route path="/platform/sms" element={<PlatformSms />} />
         <Route path="/platform/organizations" element={<PlatformOrganizations />} />
         <Route path="/platform/plans" element={<PlatformPlans />} />
         <Route path="/platform/sms-packages" element={<PlatformPackages />} />

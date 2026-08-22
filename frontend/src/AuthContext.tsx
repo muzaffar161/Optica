@@ -16,6 +16,7 @@ type AuthState = {
   login: (username: string, password: string) => Promise<AuthUser>
   logout: () => void
   patchUser: (patch: Partial<AuthUser>) => void
+  refreshUser: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthState | null>(null)
@@ -47,6 +48,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return me
   }, [])
 
+  const refreshUser = useCallback(async () => {
+    if (!getToken()) return
+    try {
+      const me = await api<AuthUser>('/auth/me')
+      setUser(me)
+    } catch {
+      /* keep current session until 401 handler */
+    }
+  }, [])
+
+  useEffect(() => {
+    const onFocus = () => {
+      if (getToken()) void refreshUser()
+    }
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [refreshUser])
+
   const logout = useCallback(() => {
     setToken(null)
     setUser(null)
@@ -57,8 +76,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const value = useMemo(
-    () => ({ user, loading, login, logout, patchUser }),
-    [user, loading, login, logout, patchUser],
+    () => ({ user, loading, login, logout, patchUser, refreshUser }),
+    [user, loading, login, logout, patchUser, refreshUser],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

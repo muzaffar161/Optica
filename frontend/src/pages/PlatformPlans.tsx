@@ -3,6 +3,12 @@ import { api } from '../api'
 import { useToast } from '../Toast'
 import Modal from '../components/Modal'
 import { formatSum } from '../types'
+import {
+  clampSubscriptionWarnDays,
+  DEFAULT_SUBSCRIPTION_WARN_DAYS,
+  MAX_SUBSCRIPTION_WARN_DAYS,
+  MIN_SUBSCRIPTION_WARN_DAYS,
+} from '../subscription'
 
 type Plan = {
   id: string
@@ -48,9 +54,16 @@ export default function PlatformPlans() {
   const [open, setOpen] = useState<Plan | 'new' | null>(null)
   const [form, setForm] = useState(empty)
   const [pending, setPending] = useState(false)
+  const [warnDays, setWarnDays] = useState(String(DEFAULT_SUBSCRIPTION_WARN_DAYS))
+  const [warnPending, setWarnPending] = useState(false)
 
   async function load() {
-    setItems(await api<Plan[]>('/platform/plans'))
+    const [plans, sms] = await Promise.all([
+      api<Plan[]>('/platform/plans'),
+      api<{ subscriptionWarnDays?: number }>('/platform/product-sms'),
+    ])
+    setItems(plans)
+    setWarnDays(String(clampSubscriptionWarnDays(sms.subscriptionWarnDays)))
   }
 
   useEffect(() => {
@@ -113,6 +126,24 @@ export default function PlatformPlans() {
     await load()
   }
 
+  async function saveWarn(e: FormEvent) {
+    e.preventDefault()
+    setWarnPending(true)
+    try {
+      const days = clampSubscriptionWarnDays(Number(warnDays))
+      await api('/platform/product-sms', {
+        method: 'PATCH',
+        body: JSON.stringify({ subscriptionWarnDays: days }),
+      })
+      setWarnDays(String(days))
+      toast(`Предупреждение за ${days} дн. до конца`)
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Ошибка', 'err')
+    } finally {
+      setWarnPending(false)
+    }
+  }
+
   return (
     <div className="pb-20 md:pb-0">
       <div className="mb-6 flex items-end justify-between gap-4">
@@ -128,6 +159,34 @@ export default function PlatformPlans() {
           Создать тариф
         </button>
       </div>
+
+      <form
+        onSubmit={saveWarn}
+        className="mb-6 flex flex-wrap items-end gap-3 rounded-2xl border border-line bg-card p-4"
+      >
+        <label className="min-w-[12rem] flex-1">
+          <span className="mb-1 block text-sm text-muted">
+            Предупреждение в салоне за сколько дней до конца
+          </span>
+          <input
+            type="number"
+            min={MIN_SUBSCRIPTION_WARN_DAYS}
+            max={MAX_SUBSCRIPTION_WARN_DAYS}
+            required
+            value={warnDays}
+            onChange={(e) => setWarnDays(e.target.value)}
+            className="w-full rounded-xl border border-line px-3 py-2.5 outline-none"
+          />
+        </label>
+        <button
+          type="submit"
+          disabled={warnPending}
+          className="rounded-xl bg-ink px-4 py-2.5 text-sm font-medium text-white disabled:opacity-60"
+        >
+          {warnPending ? 'Сохраняем…' : 'Сохранить'}
+        </button>
+      </form>
+
       <div className="space-y-3">
         {items.map((plan) => (
           <article key={plan.id} className="rounded-2xl border border-line bg-card p-4">

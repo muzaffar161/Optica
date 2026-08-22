@@ -161,8 +161,8 @@ export class MessageTemplatesService {
     const bodyRu = dto.bodyRu.trim();
     if (name.length < 2) throw new BadRequestException('Назовите шаблон');
     if (!bodyRu) throw new BadRequestException('Напишите русский текст');
-    await this.ensureSmsLimit(dto.smsRu || DEFAULT_SMS_RU, 'SMS на русском');
-    await this.ensureSmsLimit(dto.smsUz || DEFAULT_SMS_UZ, 'SMS на узбекском');
+    await this.ensureSmsLimit(dto.smsRu || DEFAULT_SMS_RU, 'SMS на русском', 'ru', false);
+    await this.ensureSmsLimit(dto.smsUz || DEFAULT_SMS_UZ, 'SMS на узбекском', 'uz', false);
     return this.prisma.messageTemplate.create({
       data: {
         name,
@@ -180,9 +180,10 @@ export class MessageTemplatesService {
     id: string,
     dto: { name?: string; hint?: string; bodyRu?: string; bodyUz?: string; smsRu?: string; smsUz?: string },
   ) {
-    await this.get(id);
-    if (dto.smsRu != null) await this.ensureSmsLimit(dto.smsRu, 'SMS на русском');
-    if (dto.smsUz != null) await this.ensureSmsLimit(dto.smsUz, 'SMS на узбекском');
+    const row = await this.get(id);
+    const force = row.kind === 'welcome' || row.id === WELCOME_TEMPLATE_ID;
+    if (dto.smsRu != null) await this.ensureSmsLimit(dto.smsRu, 'SMS на русском', 'ru', force);
+    if (dto.smsUz != null) await this.ensureSmsLimit(dto.smsUz, 'SMS на узбекском', 'uz', force);
     return this.prisma.messageTemplate.update({
       where: { id },
       data: {
@@ -229,9 +230,15 @@ export class MessageTemplatesService {
     return row;
   }
 
-  private async ensureSmsLimit(template: string, label: string) {
-    const limit = await this.platformSms.charLimit();
-    const over = smsOverflow(template, limit);
+  private async ensureSmsLimit(
+    template: string,
+    label: string,
+    lang: 'ru' | 'uz',
+    force: boolean,
+  ) {
+    const prefs = await this.platformSms.prefs();
+    if (!force && prefs.smsViaDevice) return;
+    const over = smsOverflow(template, prefs.smsCharLimit, prefs.smsToLatin, lang);
     if (!over) return;
     throw new BadRequestException(
       `${label}: ${over.chars} символов, лимит ${over.limit}. Укоротите текст.`,

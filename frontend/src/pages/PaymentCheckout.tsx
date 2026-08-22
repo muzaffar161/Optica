@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api'
+import { useAuth } from '../AuthContext'
 import { useToast } from '../Toast'
 import { formatSum } from '../types'
 import { formatPersonName, personName } from '../name'
@@ -17,6 +18,7 @@ export default function PaymentCheckoutPage() {
   const { id } = useParams()
   const toast = useToast()
   const navigate = useNavigate()
+  const { refreshUser } = useAuth()
   const [payment, setPayment] = useState<Payment | null>(null)
   const [settings, setSettings] = useState<PaymentSettings | null>(null)
   const [method, setMethod] = useState<PaymentMethod>('CLICK')
@@ -46,6 +48,10 @@ export default function PaymentCheckoutPage() {
   useEffect(() => {
     load().catch((err: Error) => toast(err.message, 'err'))
   }, [id])
+
+  useEffect(() => {
+    if (payment?.status === 'PAID') void refreshUser()
+  }, [payment?.status, refreshUser])
 
   async function submit(e: FormEvent) {
     e.preventDefault()

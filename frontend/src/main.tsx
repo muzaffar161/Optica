@@ -6,7 +6,10 @@ import { ThemeSync } from './ThemeSync'
 import { ToastProvider } from './Toast'
 import OfflineBanner from './components/OfflineBanner'
 import App from './App'
+import { bootPwaInstall, PwaTitlebar } from './pwa'
 import './index.css'
+
+bootPwaInstall()
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -20,6 +23,7 @@ createRoot(document.getElementById('root')!).render(
       <AuthProvider>
         <ThemeSync>
           <ToastProvider>
+            <PwaTitlebar />
             <OfflineBanner />
             <App />
           </ToastProvider>

@@ -17,6 +17,7 @@ import { PaymentService } from './payment.service';
 import { PaymentSettingsService } from './payment-settings.service';
 import { SmsWalletService } from './sms-wallet.service';
 import { SmsPackageAdminService } from './plan.service';
+import { PlatformSmsService } from './platform-sms.service';
 import { CreatePaymentDto, SubmitPaymentDto } from './dto/billing.dto';
 import { RateLimit } from '../common/rate-limit.decorator';
 
@@ -29,6 +30,7 @@ export class OrgBillingController {
     private readonly settings: PaymentSettingsService,
     private readonly wallet: SmsWalletService,
     private readonly packages: SmsPackageAdminService,
+    private readonly pot: PlatformSmsService,
   ) {}
 
   @Get('billing')
@@ -99,8 +101,10 @@ export class OrgBillingController {
   }
 
   @Get('sms/packages')
-  packagesList(@CurrentUser() user: AuthUser) {
+  async packagesList(@CurrentUser() user: AuthUser) {
     this.ensureOrgOwner(user);
+    const prefs = await this.pot.prefs();
+    if (prefs.smsViaDevice) return [];
     return this.packages.list(true);
   }
 

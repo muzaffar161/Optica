@@ -69,6 +69,15 @@ export class PlatformController {
     if (dto.smsCharLimit != null) {
       await this.platformSms.setCharLimit(dto.smsCharLimit);
     }
+    if (dto.smsToLatin != null) {
+      await this.platformSms.setToLatin(dto.smsToLatin);
+    }
+    if (dto.smsViaDevice != null) {
+      await this.platformSms.setViaDevice(dto.smsViaDevice);
+    }
+    if (dto.subscriptionWarnDays != null) {
+      await this.platformSms.setWarnDays(dto.subscriptionWarnDays);
+    }
     if (dto.amount) {
       await this.platformSms.adjust(dto.amount, dto.reason || 'Корректировка');
     }

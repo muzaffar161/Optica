@@ -2,7 +2,9 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { api } from '../api'
 import { useToast } from '../Toast'
 import FilePick from '../components/FilePick'
+import PhoneInput from '../components/PhoneInput'
 import { formatPersonName, personName } from '../name'
+import { isPhoneValid, UZ_DEFAULT } from '../phone'
 import type { PaymentSettings } from '../payment'
 
 export default function PlatformPaymentSettings() {
@@ -18,6 +20,8 @@ export default function PlatformPaymentSettings() {
       cardOwner: formatPersonName(row.cardOwner),
       clickEnabled: row.clickEnabled !== false,
       cardEnabled: row.cardEnabled !== false,
+      adminAlertPhone: row.adminAlertPhone || '',
+      adminAlertVia: row.adminAlertVia || 'auto',
     })
     setQr(null)
   }
@@ -33,6 +37,11 @@ export default function PlatformPaymentSettings() {
       toast('Включите хотя бы один способ оплаты', 'err')
       return
     }
+    const phone = form.adminAlertPhone?.trim() || ''
+    if (phone && phone !== UZ_DEFAULT && !isPhoneValid(phone)) {
+      toast('Проверьте номер для SMS-заявок', 'err')
+      return
+    }
     setPending(true)
     try {
       await api('/platform/payment-settings', {
@@ -46,6 +55,8 @@ export default function PlatformPaymentSettings() {
           paymentExpireHours: form.paymentExpireHours,
           clickEnabled: form.clickEnabled,
           cardEnabled: form.cardEnabled,
+          adminAlertPhone: phone === UZ_DEFAULT ? '' : phone,
+          adminAlertVia: form.adminAlertVia || 'auto',
         }),
       })
       if (qr) {
@@ -166,6 +177,48 @@ export default function PlatformPaymentSettings() {
             className="w-full rounded-xl border border-line px-3 py-2.5"
           />
         </label>
+      </section>
+
+      <section className="space-y-3 rounded-2xl border border-line bg-card p-5">
+        <div className="font-display text-xl">Заявки вам</div>
+        <p className="text-sm text-muted">
+          Только ваши уведомления о тарифе и SMS. Салонам и клиентам ничего не меняется. Номер им не
+          виден.
+        </p>
+        <PhoneInput
+          label="Ваш номер"
+          value={form.adminAlertPhone || ''}
+          onChange={(adminAlertPhone) => setForm({ ...form, adminAlertPhone })}
+        />
+        <fieldset className="space-y-2">
+          <legend className="text-sm text-muted">Куда слать</legend>
+          {(
+            [
+              ['auto', 'Как клиентам: сначала Telegram, если номер в боте, иначе SMS'],
+              ['telegram', 'Только Telegram'],
+              ['sms', 'Только SMS'],
+            ] as const
+          ).map(([key, label]) => (
+            <label key={key} className="flex items-start gap-3 rounded-xl border border-line px-3 py-3">
+              <input
+                type="radio"
+                className="mt-1"
+                name="adminAlertVia"
+                checked={(form.adminAlertVia || 'auto') === key}
+                onChange={() => setForm({ ...form, adminAlertVia: key })}
+              />
+              <span className="text-sm">{label}</span>
+            </label>
+          ))}
+        </fieldset>
+        {form.adminTelegramLinked ? (
+          <p className="text-xs text-muted">Бот привязан к этому номеру.</p>
+        ) : (
+          <p className="text-xs text-muted">
+            Чтобы заявки шли в Telegram: сохраните номер, напишите боту /start и поделитесь тем же
+            номером. Чужой номер бот не примет.
+          </p>
+        )}
       </section>
 
       <button

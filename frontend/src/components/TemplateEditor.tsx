@@ -7,7 +7,9 @@ type Props = {
   previewVars?: Record<string, string>
   required?: boolean
   sms?: boolean
-  smsLimit?: number
+  smsLimit?: number | null
+  toLatin?: boolean
+  lang?: 'ru' | 'uz'
   chips?: ReadonlyArray<{ key: string; label: string }>
 }
 
@@ -18,24 +20,12 @@ export default function TemplateEditor({
   required = true,
   sms = false,
   smsLimit,
+  toLatin = false,
+  lang = 'ru',
   chips = TEMPLATE_VARS,
 }: Props) {
   const area = useRef<HTMLTextAreaElement>(null)
   const vars = { ...SAMPLE_VARS, ...previewVars }
-
-  function filledMeta(raw: string) {
-    return smsMeta(renderTemplate(raw, vars), smsLimit)
-  }
-
-  function accept(next: string) {
-    if (!sms) {
-      onChange(next)
-      return
-    }
-    const nextMeta = filledMeta(next)
-    const curMeta = filledMeta(value)
-    if (!nextMeta.over || nextMeta.chars < curMeta.chars) onChange(next)
-  }
 
   function insert(key: string) {
     const el = area.current
@@ -43,11 +33,6 @@ export default function TemplateEditor({
     const start = el?.selectionStart ?? value.length
     const end = el?.selectionEnd ?? value.length
     const { next, caret } = insertAtCursor(value, token, start, end)
-    if (sms) {
-      const nextMeta = filledMeta(next)
-      const curMeta = filledMeta(value)
-      if (nextMeta.over && nextMeta.chars >= curMeta.chars) return
-    }
     onChange(next)
     requestAnimationFrame(() => {
       el?.focus()
@@ -56,7 +41,7 @@ export default function TemplateEditor({
   }
 
   const preview = renderTemplate(value, vars)
-  const meta = sms ? smsMeta(preview, smsLimit) : null
+  const meta = sms ? smsMeta(preview, smsLimit, toLatin, lang) : null
 
   return (
     <div>
@@ -64,9 +49,8 @@ export default function TemplateEditor({
         ref={area}
         required={required}
         rows={sms ? 4 : 8}
-        maxLength={sms ? Math.max(120, (smsLimit ?? 70) + 80) : undefined}
         value={value}
-        onChange={(e) => accept(e.target.value)}
+        onChange={(e) => onChange(e.target.value)}
         className={`w-full rounded-xl border px-3 py-2.5 outline-none ${
           meta?.over ? 'border-red-400' : 'border-line'
         }`}
@@ -85,15 +69,18 @@ export default function TemplateEditor({
       </div>
       {meta ? (
         <div className={`mt-2 text-xs ${meta.over ? 'text-red-600' : 'text-muted'}`}>
-          {meta.chars} / {meta.limit}
-          {meta.over
-            ? ' — больше лимита, уберите лишнее'
-            : ` · осталось ${meta.remaining}`}
+          {meta.unlimited
+            ? `${meta.chars} символов, без обрезки`
+            : `${meta.chars} / ${meta.limit}${
+                meta.over ? ' — больше лимита, уберите лишнее' : ` · осталось ${meta.remaining}`
+              }`}
         </div>
       ) : null}
       <div className="mt-3 whitespace-pre-wrap rounded-xl bg-paper px-3 py-2.5 text-sm text-muted">
-        <div className="mb-1 text-[11px] uppercase tracking-wide">Как увидит клиент</div>
-        {preview}
+        <div className="mb-1 text-[11px] uppercase tracking-wide">
+          Как увидит клиент{toLatin ? ' · латиница' : ''}
+        </div>
+        {meta?.text ?? preview}
       </div>
     </div>
   )

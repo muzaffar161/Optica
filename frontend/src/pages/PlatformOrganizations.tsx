@@ -170,7 +170,7 @@ export default function PlatformOrganizations() {
       <div className="mb-6">
         <h1 className="font-display text-3xl">Подписки</h1>
         <p className="mt-1 text-sm text-muted">
-          Тариф и SMS принадлежат организации — все её салоны делят один баланс.
+          Тариф принадлежит организации. SMS на её баланс выдаются с общего счёта (меню SMS).
         </p>
       </div>
       <div className="space-y-3">
@@ -237,7 +237,9 @@ export default function PlatformOrganizations() {
             </form>
 
             <form onSubmit={adjust} className="space-y-2">
-              <span className="block text-sm text-muted">Корректировка SMS</span>
+              <span className="block text-sm text-muted">
+                Выдать с общего счёта (+) или вернуть (−)
+              </span>
               <input
                 type="number"
                 value={smsAmount}

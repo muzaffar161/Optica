@@ -68,14 +68,30 @@ export class SmsWalletService {
       throw new BadRequestException('Количество SMS должно быть больше нуля');
     }
     return this.prisma.$transaction((tx) =>
-      this.apply(
-        tx,
-        opts.organizationId,
-        -opts.amount,
-        opts.type,
-        opts.description,
-        opts.notificationId,
-      ),
+      this.debitInTx(tx, opts),
+    );
+  }
+
+  async debitInTx(
+    tx: Prisma.TransactionClient,
+    opts: {
+      organizationId: string;
+      amount: number;
+      type: SmsTxType;
+      description: string;
+      notificationId?: string;
+    },
+  ) {
+    if (opts.amount <= 0) {
+      throw new BadRequestException('Количество SMS должно быть больше нуля');
+    }
+    return this.apply(
+      tx,
+      opts.organizationId,
+      -opts.amount,
+      opts.type,
+      opts.description,
+      opts.notificationId,
     );
   }
 

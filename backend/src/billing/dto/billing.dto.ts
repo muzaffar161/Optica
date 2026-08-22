@@ -308,4 +308,13 @@ export class UpdatePaymentSettingsDto {
   @IsOptional()
   @IsBoolean()
   cardEnabled?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  adminAlertPhone?: string;
+
+  @IsOptional()
+  @IsIn(['auto', 'sms', 'telegram'])
+  adminAlertVia?: 'auto' | 'sms' | 'telegram';
 }

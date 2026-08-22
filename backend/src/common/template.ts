@@ -1,3 +1,5 @@
+import { transliterateCyrillic, type TranslitLang } from './translit';
+
 export const DEFAULT_TEMPLATE =
   'Здравствуйте, {fullName}! Ваш заказ «{orderTitle}» готов. Можете забрать: {address}, {opticsName}, ориентир: {landmark}.';
 
@@ -366,14 +368,33 @@ export function smsLimitOf(limit?: number | null) {
   return clampSmsCharLimit(limit);
 }
 
-export function smsOverflow(template: string, limit?: number | null) {
+export function smsOverflow(
+  template: string,
+  limit?: number | null,
+  toLatin = false,
+  lang: TranslitLang = 'ru',
+) {
   const raw = template.trim();
   if (!raw) return null;
-  const filled = renderTemplate(raw, SMS_SAMPLE_VARS);
+  const filled = prepareSmsBody(renderTemplate(raw, SMS_SAMPLE_VARS), toLatin, lang);
   const cap = smsLimitOf(limit);
   const chars = smsChars(filled);
   if (chars <= cap) return null;
   return { chars, limit: cap, filled };
+}
+
+export function prepareSmsBody(text: string, toLatin = false, lang: TranslitLang = 'ru') {
+  return toLatin ? transliterateCyrillic(text, lang) : text;
+}
+
+export function prepareSms(
+  text: string,
+  max = DEFAULT_SMS_CHAR_LIMIT,
+  opts?: { toLatin?: boolean; keepSuffix?: string; lang?: TranslitLang; truncate?: boolean },
+) {
+  const body = prepareSmsBody(text, opts?.toLatin, opts?.lang);
+  if (opts?.truncate === false) return body.trim();
+  return fitSms(body, max, opts?.keepSuffix);
 }
 
 export function fitSms(text: string, max = DEFAULT_SMS_CHAR_LIMIT, keepSuffix = '') {

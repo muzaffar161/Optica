@@ -32,6 +32,7 @@ type Plan = {
 type Billing = {
   plan: Plan | null
   subscription: { status: string; startedAt: string; expiresAt: string } | null
+  expired?: boolean
   salonCount: number
   employeeCount: number
   smsBalance: number
@@ -108,9 +109,17 @@ export default function BillingPage() {
       <div>
         <h1 className="font-display text-3xl">Подписка</h1>
         <p className="mt-1 text-sm text-muted">
-          Выберите тариф. Филиалы добавляются в разделе «Филиалы».
+          {data.expired || !current
+            ? 'Подписка закончилась. Выберите тариф и оплатите, чтобы снова открыть салон.'
+            : 'Выберите тариф. Филиалы добавляются в разделе «Филиалы».'}
         </p>
       </div>
+
+      {(data.expired || !current) && (
+        <section className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-900">
+          Доступ к заказам, клиентам и остальным разделам закрыт, пока не оплатите тариф.
+        </section>
+      )}
 
       {current && (
         <section className="rounded-2xl border border-line bg-card px-5 py-4">

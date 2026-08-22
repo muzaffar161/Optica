@@ -1,8 +1,10 @@
 import { useState } from 'react'
-import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, Link } from 'react-router-dom'
 import { useAuth } from '../AuthContext'
 import { canView } from '../access'
 import { hasCatalog, featuresOf, type AccessModule } from '../types'
+import { isSubscriptionActive, remainingPhrase } from '../subscription'
+import PullToRefresh from './PullToRefresh'
 
 const nav: { to: string; label: string; end?: boolean; module?: AccessModule; ownerOnly?: boolean; orgOwnerOnly?: boolean }[] = [
   { to: '/', label: 'Заказы', end: true, module: 'orders' },
@@ -36,10 +38,13 @@ function Brand({ name }: { name?: string | null }) {
 
 function Nav({ onNavigate }: { onNavigate?: () => void }) {
   const { user } = useAuth()
+  const expired = !isSubscriptionActive(user)
   const items = nav.filter((item) => {
+    if (expired) return item.to === '/billing' && !!user?.orgOwner
     const features = featuresOf(user)
     if (item.to === '/audit' && features.auditLevel === 'none') return false
     if (item.to === '/integrations' && !features.apiAccess) return false
+    if (item.to === '/sms' && user?.smsViaDevice) return false
     if (item.orgOwnerOnly) return !!user?.orgOwner
     if (item.ownerOnly) return user?.isOwner !== false
     if (item.module === 'products' && !hasCatalog(user)) return false
@@ -68,6 +73,31 @@ function Nav({ onNavigate }: { onNavigate?: () => void }) {
   )
 }
 
+function SubscriptionBanner() {
+  const { user } = useAuth()
+  if (!user || user.role !== 'optics' || !isSubscriptionActive(user)) return null
+  const days = user.subscriptionDaysLeft ?? 0
+  const warn = user.subscriptionWarnDays ?? 7
+  if (days <= 0 || days > warn) return null
+  return (
+    <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span>
+          {remainingPhrase(days)}
+          {user.subscriptionExpiresAt
+            ? ` · до ${new Date(user.subscriptionExpiresAt).toLocaleDateString('ru-RU')}`
+            : ''}
+        </span>
+        {user.orgOwner && (
+          <Link to="/billing" className="font-medium underline">
+            Продлить
+          </Link>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function Layout() {
   const { user, logout } = useAuth()
   const location = useLocation()
@@ -78,7 +108,7 @@ export default function Layout() {
     <>
       <Brand name={user?.opticsName} />
       <Nav onNavigate={() => setMenuOpen(false)} />
-      <div className="border-t border-white/10 px-5 py-4">
+      <div className="border-t border-white/10 px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
         <div className="text-xs text-white/50">Вы вошли как</div>
         <div className="mt-0.5 text-sm">{user?.username}</div>
         <button
@@ -112,9 +142,9 @@ export default function Layout() {
         </div>
       )}
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         {!isNewOrder && (
-          <header className="sticky top-0 z-40 flex items-center gap-3 border-b border-line bg-card/95 px-4 py-3 backdrop-blur print:hidden md:hidden">
+          <header className="sticky top-0 z-40 flex items-center gap-3 border-b border-line bg-card/95 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur print:hidden md:hidden">
             <button
               type="button"
               onClick={() => setMenuOpen(true)}
@@ -142,10 +172,17 @@ export default function Layout() {
         )}
         <main
           className={`min-w-0 flex-1 ${
-            isNewOrder ? 'p-0' : 'p-4 md:p-8'
+            isNewOrder ? 'flex min-h-0 flex-col overflow-hidden p-0' : 'p-4 md:p-8'
           }`}
         >
-          <Outlet />
+          {isNewOrder ? (
+            <Outlet />
+          ) : (
+            <PullToRefresh>
+              <SubscriptionBanner />
+              <Outlet />
+            </PullToRefresh>
+          )}
         </main>
       </div>
     </div>

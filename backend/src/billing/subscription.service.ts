@@ -7,6 +7,7 @@ import {
 import { BillingPeriod, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SmsWalletService } from './sms-wallet.service';
+import { PlatformSmsService } from './platform-sms.service';
 
 function addPeriod(from: Date, period: BillingPeriod) {
   const next = new Date(from);
@@ -20,6 +21,7 @@ export class SubscriptionService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly wallet: SmsWalletService,
+    private readonly pot: PlatformSmsService,
   ) {}
 
   async getCurrentSubscription(organizationId: string) {
@@ -41,7 +43,8 @@ export class SubscriptionService {
 
   async getCurrentPlan(organizationId: string) {
     const sub = await this.getCurrentSubscription(organizationId);
-    return sub?.plan ?? null;
+    if (!sub || sub.status !== 'ACTIVE') return null;
+    return sub.plan;
   }
 
   async assignPlan(organizationId: string, planId: string) {
@@ -52,30 +55,32 @@ export class SubscriptionService {
     await this.prisma.organization.findUniqueOrThrow({
       where: { id: organizationId },
     });
-    await this.prisma.subscription.updateMany({
-      where: { organizationId, status: 'ACTIVE' },
-      data: { status: 'CANCELLED' },
-    });
-    const startedAt = new Date();
-    const sub = await this.prisma.subscription.create({
-      data: {
-        organizationId,
-        planId: plan.id,
-        status: 'ACTIVE',
-        startedAt,
-        expiresAt: addPeriod(startedAt, plan.billingPeriod),
-      },
-      include: { plan: true },
-    });
-    if (plan.includedSms > 0) {
-      await this.wallet.credit({
-        organizationId,
-        amount: plan.includedSms,
-        type: 'SUBSCRIPTION_BONUS',
-        description: `SMS по тарифу «${plan.name}»`,
+    return this.prisma.$transaction(async (tx) => {
+      await tx.subscription.updateMany({
+        where: { organizationId, status: 'ACTIVE' },
+        data: { status: 'CANCELLED' },
       });
-    }
-    return sub;
+      const startedAt = new Date();
+      const sub = await tx.subscription.create({
+        data: {
+          organizationId,
+          planId: plan.id,
+          status: 'ACTIVE',
+          startedAt,
+          expiresAt: addPeriod(startedAt, plan.billingPeriod),
+        },
+        include: { plan: true },
+      });
+      if (plan.includedSms > 0) {
+        await this.pot.allocateFromPotInTx(tx, {
+          organizationId,
+          amount: plan.includedSms,
+          type: 'SUBSCRIPTION_BONUS',
+          description: `SMS по тарифу «${plan.name}»`,
+        });
+      }
+      return sub;
+    });
   }
 
   async applyPaidPlan(
@@ -96,7 +101,7 @@ export class SubscriptionService {
         include: { plan: true },
       });
       if (plan.includedSms > 0) {
-        await this.wallet.creditInTx(tx, {
+        await this.pot.allocateFromPotInTx(tx, {
           organizationId,
           amount: plan.includedSms,
           type: 'SUBSCRIPTION_BONUS',
@@ -120,7 +125,7 @@ export class SubscriptionService {
       include: { plan: true },
     });
     if (plan.includedSms > 0) {
-      await this.wallet.creditInTx(tx, {
+      await this.pot.allocateFromPotInTx(tx, {
         organizationId,
         amount: plan.includedSms,
         type: 'SUBSCRIPTION_BONUS',
@@ -187,7 +192,7 @@ export class SubscriptionService {
   async requirePlan(organizationId: string) {
     const plan = await this.getCurrentPlan(organizationId);
     if (!plan) {
-      throw new ForbiddenException('Нет активной подписки. Обратитесь в поддержку.');
+      throw new ForbiddenException('Подписка истекла. Продлите тариф.');
     }
     return plan;
   }
@@ -203,9 +208,11 @@ export class SubscriptionService {
         orderBy: { price: 'asc' },
       }),
     ]);
+    const active = sub?.status === 'ACTIVE' ? sub : null;
     return {
-      subscription: sub,
-      plan: sub?.plan ?? null,
+      subscription: active,
+      plan: active?.plan ?? null,
+      expired: Boolean(sub && sub.status !== 'ACTIVE'),
       salonCount,
       employeeCount,
       smsBalance: wallet.balance,

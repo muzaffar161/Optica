@@ -8,7 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { Bot, GrammyError, Keyboard, type Context } from 'grammy';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
-import { normalizePhone } from '../common/phone';
+import { normalizePhone, phonesMatch } from '../common/phone';
 import { formatRxBody, formatRxTitle, parseRxJson } from '../common/rx';
 import {
   findTemplatePreset,
@@ -148,8 +148,12 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         );
         return;
       }
+      if (await this.isAdminChat(ctx)) {
+        await ctx.reply('Этот чат получает заявки на оплату из админки.');
+        return;
+      }
       await ctx.reply(
-        'Здравствуйте! Чтобы получать уведомления и смотреть заказ, поделитесь номером телефона — тем же, который оставили в оптике.',
+        'Здравствуйте! Чтобы получать уведомления, поделитесь номером телефона — тем же, который указали в салоне или в админке.',
         { reply_markup: this.phoneKeyboard() },
       );
     });
@@ -164,23 +168,30 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       const phone = normalizePhone(contact.phone_number);
       const chatId = String(ctx.chat.id);
       const clients = await this.prisma.client.findMany({ where: { phone } });
+      const admin = await this.bindAdminIfMatch(phone, chatId);
 
-      if (clients.length === 0) {
+      if (clients.length === 0 && !admin) {
         await ctx.reply(
-          `Номер ${phone} не найден в базе оптики. Оставьте этот номер в салоне при заказе — после этого напишите /start ещё раз.`,
+          `Номер ${phone} не найден. Клиенту его оставляют в салоне при заказе. Для заявок на оплату номер должен совпадать с тем, что в админке, Реквизиты.`,
           { reply_markup: this.phoneKeyboard() },
         );
         return;
       }
 
-      await this.prisma.client.updateMany({
-        where: { phone },
-        data: { telegramChatId: chatId },
-      });
+      if (clients.length > 0) {
+        await this.prisma.client.updateMany({
+          where: { phone },
+          data: { telegramChatId: chatId },
+        });
+        await ctx.reply(
+          `Спасибо, ${clients[0].fullName}! Вы подписаны. «Статус» — текущий заказ, «Сообщения» — то, что присылал салон.`,
+          { reply_markup: this.menuKeyboard() },
+        );
+        return;
+      }
 
       await ctx.reply(
-        `Спасибо, ${clients[0].fullName}! Вы подписаны. «Статус» — текущий заказ, «Сообщения» — то, что присылал салон.`,
-        { reply_markup: this.menuKeyboard() },
+        'Готово. Заявки на тариф и SMS будут приходить сюда. Если бот недоступен — уйдёт SMS на этот номер.',
       );
     });
 
@@ -241,6 +252,10 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       if (!text || text.startsWith('/')) return;
       if ([BTN_STATUS, BTN_MESSAGES, BTN_SMS, BTN_INBOX].includes(text)) return;
       if (await this.tooFast(ctx)) return;
+      if (await this.isAdminChat(ctx)) {
+        await ctx.reply('Заявки на оплату будут приходить сюда.');
+        return;
+      }
       await ctx.reply(
         'Нажмите «Статус» — там текущий заказ. «Сообщения» — то, что присылал салон.',
         { reply_markup: this.menuKeyboard() },
@@ -250,6 +265,30 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     bot.catch((err) => {
       this.logger.error(`Ошибка бота: ${err.message}`, err.stack);
     });
+  }
+
+  private async isAdminChat(ctx: Context) {
+    const chatId = ctx.chat ? String(ctx.chat.id) : '';
+    if (!chatId) return false;
+    const row = await this.prisma.platformConfig.findUnique({
+      where: { id: 'default' },
+      select: { adminTelegramChatId: true },
+    });
+    return Boolean(row?.adminTelegramChatId && row.adminTelegramChatId === chatId);
+  }
+
+  private async bindAdminIfMatch(phone: string, chatId: string) {
+    const row = await this.prisma.platformConfig.findUnique({
+      where: { id: 'default' },
+      select: { adminAlertPhone: true },
+    });
+    const saved = row?.adminAlertPhone?.trim() || '';
+    if (!saved || !phonesMatch(phone, saved)) return false;
+    await this.prisma.platformConfig.update({
+      where: { id: 'default' },
+      data: { adminTelegramChatId: chatId },
+    });
+    return true;
   }
 
   private async tooFast(ctx: Context) {

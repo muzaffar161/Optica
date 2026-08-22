@@ -17,7 +17,8 @@ type Props = {
   lang?: 'ru' | 'uz' | 'both'
   onSelect: (item: CatalogTemplate) => void
   previewVars?: Record<string, string>
-  smsLimit?: number
+  smsLimit?: number | null
+  toLatin?: boolean
 }
 
 export default function TemplatePicker({
@@ -27,6 +28,7 @@ export default function TemplatePicker({
   onSelect,
   previewVars,
   smsLimit,
+  toLatin = false,
 }: Props) {
   const vars = { ...SAMPLE_VARS, ...previewVars }
   const showUz = lang === 'uz' || lang === 'both'
@@ -39,7 +41,9 @@ export default function TemplatePicker({
         const smsRu = renderTemplate(item.smsRu || item.bodyRu, vars)
         const smsUz = renderTemplate(item.smsUz || item.bodyUz, vars)
         const smsPreview = showUz && !showRu ? smsUz : smsRu
-        const meta = smsMeta(smsPreview, smsLimit)
+        const smsRuShown = smsMeta(smsRu, smsLimit, toLatin, 'ru').text
+        const smsUzShown = smsMeta(smsUz, smsLimit, toLatin, 'uz').text
+        const meta = smsMeta(smsPreview, smsLimit, toLatin, showUz && !showRu ? 'uz' : 'ru')
         return (
           <button
             key={item.id}
@@ -73,12 +77,14 @@ export default function TemplatePicker({
             {smsPreview ? (
               <div className="mt-3 rounded-xl bg-paper px-3 py-2 text-sm text-muted">
                 <div className="mb-1 text-[11px] uppercase tracking-wide">
-                  SMS · {meta.chars} символов · {meta.parts}{' '}
-                  {meta.parts === 1 ? 'часть' : 'части'}
+                  SMS · {meta.chars} символов
+                  {meta.unlimited
+                    ? ' · без обрезки'
+                    : ` · ${meta.parts} ${meta.parts === 1 ? 'часть' : 'части'}`}
                 </div>
-                {showRu ? smsRu : null}
-                {showUz && smsUz ? (
-                  <div className={showRu ? 'mt-1' : ''}>{smsUz}</div>
+                {showRu ? smsRuShown : null}
+                {showUz && smsUzShown ? (
+                  <div className={showRu ? 'mt-1' : ''}>{smsUzShown}</div>
                 ) : null}
               </div>
             ) : null}

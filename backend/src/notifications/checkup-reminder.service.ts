@@ -2,8 +2,9 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import { OnEvent } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from './notifications.service';
-import { firstNameOf, langsOf, polishMessage, fitSms } from '../common/template';
+import { firstNameOf, langsOf, polishMessage, prepareSms } from '../common/template';
 import { PlatformSmsService } from '../billing/platform-sms.service';
+import { SubscriptionService } from '../billing/subscription.service';
 
 const FIRE_HOUR = 9;
 const MAX_TIMEOUT_MS = 24 * 24 * 60 * 60 * 1000;
@@ -79,6 +80,7 @@ export class CheckupReminderService implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
     private readonly platformSms: PlatformSmsService,
+    private readonly subscriptions: SubscriptionService,
   ) {}
 
   onModuleInit() {
@@ -197,6 +199,13 @@ export class CheckupReminderService implements OnModuleInit, OnModuleDestroy {
     if (!settings || (!settings.checkupRemindEnabled && !opts.force)) {
       return { sent: 0, failed: 0, skipped: 0, cohort: '' };
     }
+    const orgId = settings.optics?.organizationId;
+    if (orgId) {
+      const plan = await this.subscriptions.getCurrentPlan(orgId);
+      if (!plan) {
+        return { sent: 0, failed: 0, skipped: 0, cohort: '' };
+      }
+    }
 
     const now = new Date();
     const months = Math.min(Math.max(settings.checkupIntervalMonths || 6, 1), 24);
@@ -243,7 +252,7 @@ export class CheckupReminderService implements OnModuleInit, OnModuleDestroy {
     const uzSms = polishMessage(
       `{firstName}, ${months} oy o'tdi. Korishni tekshiring. ${settings.opticsName}`,
     );
-    const limit = await this.platformSms.charLimit();
+    const prefs = await this.platformSms.prefs();
 
     for (const client of clients) {
       if (
@@ -263,9 +272,12 @@ export class CheckupReminderService implements OnModuleInit, OnModuleDestroy {
         (lang === 'uz' ? uz : ru).replace('{firstName}', name),
       );
       const smsMessages = langsOf(settings.messageLang).map((lang) =>
-        fitSms((lang === 'uz' ? uzSms : ruSms).replace('{firstName}', name), limit),
+        prepareSms((lang === 'uz' ? uzSms : ruSms).replace('{firstName}', name), prefs.smsCharLimit, {
+          toLatin: prefs.smsToLatin,
+          lang,
+        }),
       );
-      const ok = await this.notifications.deliver({
+      const delivery = await this.notifications.deliver({
         opticsId,
         organizationId: settings.optics.organizationId,
         client,
@@ -278,12 +290,14 @@ export class CheckupReminderService implements OnModuleInit, OnModuleDestroy {
             ? `Напоминание об осмотре: ${client.fullName} (2)`
             : `Напоминание об осмотре: ${client.fullName}`,
       });
-      if (ok) {
+      if (delivery.ok) {
         await this.prisma.client.update({
           where: { id: client.id },
           data: { lastCheckupRemindedAt: now },
         });
         result.sent += 1;
+      } else if (delivery.smsSkipped) {
+        result.skipped += 1;
       } else {
         result.failed += 1;
       }
